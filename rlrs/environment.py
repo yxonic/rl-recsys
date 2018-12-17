@@ -1,5 +1,3 @@
-import random
-
 import fret
 import gym
 import gym.spaces as spaces
@@ -10,6 +8,7 @@ from .dataprep import load_question, load_knowledge
 @fret.configurable
 class RandomEnv(gym.Env):
     def __init__(self, dataset='zhixue', expected_avg=0.5):
+        self.dataset = dataset
         self.ques_list = load_question(
             fret.app['datasets'][dataset]['question_file'])
         self.know_list, self.know_ind_map = load_knowledge(
@@ -46,9 +45,18 @@ class RandomEnv(gym.Env):
             score = 0.
         self._scores.append(score)
         observation = [score]
-        reward = -abs(np.mean(self._scores) - self.expected_avg)
+        reward = self.get_reward()
         done = len(self._scores) > 20  # stop after 20 questions
         return observation, reward, done, {}
+
+    def get_reward(self):
+        """Calculate reward from internal states."""
+        return -abs(np.mean(self._scores) - self.expected_avg)
+
+    def train(self, records, n_epochs):
+        """Train environment model here under ws with record data."""
+        logger = self.ws.logger('RandomEnv.train')
+        logger.debug('func: <RandomEnv.train>, n_epochs=%d', n_epochs)
 
 
 @fret.configurable
