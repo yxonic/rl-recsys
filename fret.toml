@@ -1,1 +1,16 @@
 appname = "rlrs"
+
+[datasets.zhixue]
+question_file = "data/zhixue/questions.tsv"
+knowledge_file = "data/zhixue/know_list.tsv"
+record_file = "data/zhixue/records.tsv"
+
+[datasets.ustcoj]
+question_file = "data/ustcoj/questions.tsv"
+knowledge_file = "data/ustcoj/know_list.tsv"
+record_file = "data/ustcoj/records.tsv"
+
+[datasets.poj]
+question_file = "data/poj/questions.tsv"
+knowledge_file = "data/poj/know_list.tsv"
+record_file = "data/poj/records.tsv"
