@@ -8,7 +8,7 @@ def train_env(ws, n_epochs=10):
     env = ws.build_module('env')
     logger.info("[%s] %s", ws, env)
 
-    # TODO: load record and train model
+    # TODO: load record and train env
     records = load_record(fret.app['datasets'][env.dataset]['record_file'])
     env.train(records, n_epochs)
 
