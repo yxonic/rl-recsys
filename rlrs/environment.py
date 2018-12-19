@@ -2,7 +2,7 @@ import fret
 import gym
 import gym.spaces as spaces
 import numpy as np
-from .dataprep import load_question, load_knowledge
+from .dataprep import load_question, load_knowledge, load_embedding
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -69,8 +69,28 @@ class EERNNEnv:
 
 
 class EERNNModel(nn.Module):
-    def __init__(self):
+    def __init__(self, dataset_file, emb_file, exc_size=50, seq_h_size=50, n_layers=1, attn_k=10):
         super(EERNNModel, self).__init__()
+        self.emb_file = emb_file
+        wcnt, emb_size, words, embs = load_embedding(self.emb_file)
+        self.wcnt = wcnt
+        self.emb_size = emb_size
+        self.words = words
+        self.embs = embs
+        self.exc_h_size = exc_size
+        self.seq_h_size = seq_h_size
+        self.n_layers = n_layers
+        self.attn_k = 10
+
+        self.exercise_net = ExerciseNet(self.wcnt, self.emb_size, self.exc_h_size, self.n_layers)
+        self.exercise_net.load_emb(self.embs)
+
+        self.seq_net = EERNNSeqNet(dataset_file, 10, self.exc_h_size, self.seq_h_size, self.n_layers,
+                                   self.n_layers, self.attn_k)
+
+    def forward(self, exec, score, time, hidden):
+        pass
+
 
 
 class ExerciseNet(nn.Module):
@@ -89,7 +109,7 @@ class ExerciseNet(nn.Module):
 
     def forward(self, input, hidden):
         x = self.embedding_net(input)
-        y, h = self.exc_net(hidden)
+        y, h = self.exc_net(x, hidden)
 
         y, _ = torch.max(y, 0)
         return y, h
