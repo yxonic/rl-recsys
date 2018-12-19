@@ -3,6 +3,7 @@ import gym
 import gym.spaces as spaces
 import numpy as np
 from .dataprep import load_question, load_knowledge
+import torch.nn as nn
 
 
 @fret.configurable
@@ -63,3 +64,29 @@ class RandomEnv(gym.Env):
 class EKT:
     def __init__(self, n_knowledges=10):
         pass
+
+
+
+class ExerciseNet(nn.Module):
+    def __init__(self, wcnt, emb_size=100, exc_size=50, n_layers=1):
+        super(ExerciseNet, self).__init__()
+        self.wcnt = wcnt
+        self.emb_size = emb_size
+        self.exc_size = exc_size
+        self.n_layers = n_layers
+
+        self.embedding_net = nn.Embedding(wcnt, self.emb_size, padding_idx=0)
+
+        self.emb_size = exc_size // 2
+        self.exc_net = nn.GRU(self.emb_size, self.exc_size // 2, self.n_layers,
+                              bidirectional=True)
+
+    def forward(self, input, hidden):
+        x = self.embedding_net(input)
+        y, h = self.exc_net(hidden)
+
+        y, _ = torch.max(y, 0)
+        return y, h
+
+    def load_emb(self, emb):
+        self.embedding.weight.data.copy_(torch.from_numpy(emb))
