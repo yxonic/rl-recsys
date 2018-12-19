@@ -3,7 +3,9 @@ import gym
 import gym.spaces as spaces
 import numpy as np
 from .dataprep import load_question, load_knowledge
+import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 @fret.configurable
@@ -61,10 +63,14 @@ class RandomEnv(gym.Env):
 
 
 @fret.configurable
-class EKT:
+class EERNNEnv:
     def __init__(self, n_knowledges=10):
         pass
 
+
+class EERNNModel(nn.Module):
+    def __init__(self):
+        super(EERNNModel, self).__init__()
 
 
 class ExerciseNet(nn.Module):
@@ -90,3 +96,53 @@ class ExerciseNet(nn.Module):
 
     def load_emb(self, emb):
         self.embedding.weight.data.copy_(torch.from_numpy(emb))
+
+
+class EERNNSeqNet(nn.Module):
+    def __init__(self,
+                 dataset = 'dataset',
+                 n_knowledges=10,
+                 exc_size=100,
+                 hidden_size=50,
+                 n_layers=1,
+                 attn_k=10
+                 ):
+        super(EERNNSeqNet, self).__init__()
+        self.dataset = dataset
+        self.ques_list = load_question(
+            fret.app['datasets'][dataset]['question_file'])
+        self.know_list, self.know_ind_map = load_knowledge(
+            fret.app['datasets'][dataset]['knowledge_file'])
+        self.n_questions = len(self.ques_list)
+        self.n_knowledge = len(self.know_list)
+
+        self.exc_size = exc_size  # exercise size
+        self.hidden_size = hidden_size
+        self.n_layers = n_layers
+        self.attn_k = attn_k
+
+        # initialize network
+        self.seq_net = nn.GRU(self.exc_size * 2, self.hidden_size, self.n_layers)
+        self.score_out_net = nn.Linear(self.exc_size + self.hidden_size, 1)
+
+    def forward(self, exc, score, hidden):
+        excs, hs = hidden
+        h = hs[-1:]
+
+        # prediction
+        alpha = torch.mm(excs, exc.view(-1, 1)).view(-1)
+        alpha, idx = alpha.topk(min(len(alpha), self.attn_k), sorted=False)
+        alpha = F.softmax(alpha.view(-1, 1), dim=-1)
+
+        hs = hs.view(-1, self.num_layers * self.seq_hidden_size)
+        attn_h = torch.mm(alpha, torch.index_select(hs, 0, idx)).view(-1)
+
+        pred_v = torch.cat([exc, attn_h]).view(1, -1)
+        pred = self.score_out_net(pred_v)
+
+        # update seq_net
+        x = torch.cat([exc * (score >= 0.5).type_as(exc).expand_as(exc),
+                       exc * (score < 0.5).type_as(exc).expand_as(exc)])
+
+        _, h_ = self.seq_net(x.view(1, 1, -1), h)
+        return pred, h_
