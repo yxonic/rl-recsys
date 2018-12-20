@@ -88,9 +88,19 @@ class EERNNModel(nn.Module):
         self.seq_net = EERNNSeqNet(dataset_file, 10, self.exc_h_size, self.seq_h_size, self.n_layers,
                                    self.n_layers, self.attn_k)
 
-    def forward(self, exec, score, time, hidden):
-        pass
+    def forward(self, exec, score, time, hidden=None):
+        exec_hidden = None
+        exec_v, exec_h = self.exercise_net(exec.view(-1, 1), exec_hidden)
+        s, h = self.seq_net(exec_v[0], score, hidden)
+        if hidden is None:
+            hidden = exec_v, h
+        else:
+            excs, hs = hidden
+            excs = torch.cat([excs, exec_v])
+            hs = torch.cat([hs, h])
+            hidden = excs, hs
 
+        return s, hidden
 
 
 class ExerciseNet(nn.Module):
@@ -104,18 +114,18 @@ class ExerciseNet(nn.Module):
         self.embedding_net = nn.Embedding(wcnt, self.emb_size, padding_idx=0)
 
         self.emb_size = exc_size // 2
-        self.exc_net = nn.GRU(self.emb_size, self.exc_size // 2, self.n_layers,
+        self.exercise_net = nn.GRU(self.emb_size, self.exc_size // 2, self.n_layers,
                               bidirectional=True)
 
     def forward(self, input, hidden):
         x = self.embedding_net(input)
-        y, h = self.exc_net(x, hidden)
+        y, h = self.exercise_net(x, hidden)
 
         y, _ = torch.max(y, 0)
         return y, h
 
     def load_emb(self, emb):
-        self.embedding.weight.data.copy_(torch.from_numpy(emb))
+        self.embedding_net.weight.data.copy_(torch.from_numpy(emb))
 
 
 class EERNNSeqNet(nn.Module):
