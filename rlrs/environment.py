@@ -64,8 +64,15 @@ class RandomEnv(gym.Env):
 
 @fret.configurable
 class EERNNEnv(gym.Env):
-    def __init__(self, dataset='zhixue', expected_avg=0.5, emb_file='emb_file', ques_size=50,
-                 seq_h_size=50, n_layers=1, attn_k=10):
+    def __init__(self,
+                 dataset=('zhixue', 'student record dataset',
+                          ['zhixue', 'poj', 'ustcoj']),
+                 expected_avg=(0.5, 'expected average score'),
+                 emb_file=(None, 'pretrained embedding file'),
+                 ques_size=(50, 'question embedding set'),
+                 seq_h_size=(50, 'hidden size of sequence model'),
+                 n_layers=(1, 'number of layers of RNN'),
+                 attn_k=(10, 'top k records for attention')):
         super(EERNNEnv, self).__init__()
         self.dataset = dataset
         self.ques_list = load_question(
