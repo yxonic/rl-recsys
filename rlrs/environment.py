@@ -64,7 +64,8 @@ class RandomEnv(gym.Env):
 
 @fret.configurable
 class EERNNEnv(gym.Env):
-    def __init__(self, dataset='zhixue', expected_avg=0.5):
+    def __init__(self, dataset='zhixue', expected_avg=0.5, emb_file='emb_file', ques_size=50,
+                 seq_h_size=50, n_layers=1, attn_k=10):
         super(EERNNEnv, self).__init__()
         self.dataset = dataset
         self.ques_list = load_question(
@@ -85,14 +86,29 @@ class EERNNEnv(gym.Env):
         self.observation_space = spaces.Box(low=0, high=1, shape=(1,),
                                             dtype=np.float32)
 
+
+        # build EERNN model as env
+        self.env = self.build_EERNN_env(emb_file, ques_size, seq_h_size, n_layers, attn_k)
+
     def step(self, action):
-        pass
+        ques = self.ques_list[action]
+        ques_diff = ques['difficulty']
+        know = [self.know_ind_map[k] for k in ques['knowledge']]
+
+        # set score to 1 if a student masters all knowledge of this question
+        score, hidden = self.env(ques, )
+        self._scores.append(score)
+        observation = [score]
 
     def reset(self):
         if self._know_state is not None:
             self._know_state = None
         self._know_state = np.random.rand(self.n_knowledge, )
         return self._know_state
+
+    def build_EERNN_env(self, emb_file, ques_size, seq_h_size, n_layers, attn_k):
+        EERNN = EERNNModel(emb_file, ques_size, seq_h_size, n_layers, attn_k)
+        return EERNN
 
 
 '''
@@ -101,7 +117,7 @@ Model in environment
 
 
 class EERNNModel(nn.Module):
-    def __init__(self, dataset_file, emb_file, ques_size=50, seq_h_size=50, n_layers=1, attn_k=10):
+    def __init__(self, emb_file, ques_size=50, seq_h_size=50, n_layers=1, attn_k=10):
         super(EERNNModel, self).__init__()
         self.emb_file = emb_file
         wcnt, emb_size, words, embs = load_embedding(self.emb_file)
