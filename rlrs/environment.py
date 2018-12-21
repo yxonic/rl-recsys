@@ -72,7 +72,7 @@ class EERNNEnv(gym.Env):
                  ques_size=(50, 'question embedding set'),
                  seq_h_size=(50, 'hidden size of sequence model'),
                  n_layers=(1, 'number of layers of RNN'),
-                 attn_k=(10, 'top k records for attention')):
+                 attn_k=(10, 'top k records for attention in EERNN model')):
         super(EERNNEnv, self).__init__()
         self.dataset = dataset
         self.ques_list = load_question(
@@ -83,9 +83,12 @@ class EERNNEnv(gym.Env):
         self.n_knowledge = len(self.know_list)
         self.expected_avg = expected_avg
 
+        # states from 1 to t-1 containing questions, scores, knowledge states
+        self._questions = []
         self._scores = []
-
         self._know_state = None
+
+        self.hidden = None
 
         self.action_space = spaces.Discrete(self.n_questions)
         # only provide current step observation: score
@@ -93,19 +96,30 @@ class EERNNEnv(gym.Env):
         self.observation_space = spaces.Box(low=0, high=1, shape=(1,),
                                             dtype=np.float32)
 
-
         # build EERNN model as env
         self.env = self.build_EERNN_env(emb_file, ques_size, seq_h_size, n_layers, attn_k)
 
     def step(self, action):
-        ques = self.ques_list[action]
-        ques_diff = ques['difficulty']
-        know = [self.know_ind_map[k] for k in ques['knowledge']]
+        # get current states here
+        # ... (to be updated)
+        score = self._scores[-1]
 
-        # set score to 1 if a student masters all knowledge of this question
-        score, hidden = self.env(ques, )
-        self._scores.append(score)
-        observation = [score]
+        ques = self.ques_list[action]
+        # ques_diff = ques['difficulty']
+        # know = [self.know_ind_map[k] for k in ques['knowledge']]
+
+        # using EERNN to predict score given ques
+        p_score, hidden = self.env(ques['content'], score, self.hidden)
+
+        observation_ = [p_score]
+        reward = self.get_reward(ques, p_score)
+        done = len(self._scores) > 20
+
+        self._questions.append(ques)
+        self._scores.append(p_score)
+        # update current hidden and score in EERNN
+        self.hidden = hidden
+        return observation_, reward, done, {}
 
     def reset(self):
         if self._know_state is not None:
@@ -118,6 +132,50 @@ class EERNNEnv(gym.Env):
         # load EERNN paras here
         EERNN.load_state_dict(torch.load(model_para_file))
         return EERNN
+
+    def get_reward(self, question, predict_score):
+        # four reward
+        # R_coverage, R_change, R_difficulty, R_expected
+
+        question_diff = question['difficulty']
+        question_know = [self.know_ind_map[k] for k in question['knowledge']]
+
+        # coverage reward: R = -1 if current know exists in past know lists
+        past_know_list = []
+        length = len(self._questions)
+        if length == 0:
+            reward = 0
+        else:
+            for _q in self._questions:
+                _q_know = [self.know_ind_map[k] for k in _q['knowledge']]
+                past_know_list = past_know_list + _q_know
+            past_know_list = set(past_know_list)
+            if set(question_know).issubset(past_know_list):
+                R_coverage = -1
+            else:
+                R_coverage = 0
+
+            # change reward: R = 1 if score of current ques = 1
+            if predict_score == 1:
+                R_change = 1
+            else:
+                R_change = 0
+
+            # difficulty reward
+            _q = self._questions[-1]
+            R_difficulty = - ((question_diff - _q['difficulty']) ** 2)
+
+            # expected reward
+            step = 5
+            if length < step:
+                _qs = self._scores[1:]
+            else:
+                _qs = self._questions[-step:]
+            R_expected = 1 - np.abs(1 - np.mean(np.asarray(_qs)))
+
+            reward = R_expected + R_coverage + R_difficulty + R_change
+
+        return reward
 
 
 '''
@@ -144,7 +202,7 @@ class EERNNModel(nn.Module):
 
         self.seq_net = EERNNSeqNet(self.ques_h_size, self.seq_h_size, self.n_layers, self.attn_k)
 
-    def forward(self, question, score, time, hidden=None):
+    def forward(self, question, score, hidden=None):
         ques_h0 = None
         ques_v, ques_h = self.exercise_net(question.view(-1, 1), ques_h0)
         s, h = self.seq_net(ques_v[0], score, hidden)
