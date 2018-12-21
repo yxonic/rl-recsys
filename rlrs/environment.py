@@ -106,8 +106,10 @@ class EERNNEnv(gym.Env):
         self._know_state = np.random.rand(self.n_knowledge, )
         return self._know_state
 
-    def build_EERNN_env(self, emb_file, ques_size, seq_h_size, n_layers, attn_k):
+    def build_EERNN_env(self, emb_file, ques_size, seq_h_size, n_layers, attn_k, model_para_file):
         EERNN = EERNNModel(emb_file, ques_size, seq_h_size, n_layers, attn_k)
+        # load EERNN paras here
+        EERNN.load_state_dict(torch.load(model_para_file))
         return EERNN
 
 
