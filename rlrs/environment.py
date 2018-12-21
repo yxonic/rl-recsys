@@ -140,12 +140,13 @@ class EERNNEnv(gym.Env):
         question_diff = question['difficulty']
         question_know = [self.know_ind_map[k] for k in question['knowledge']]
 
-        # coverage reward: R = -1 if current know exists in past know lists
-        past_know_list = []
+        # calculate reward in current state
         length = len(self._questions)
         if length == 0:
             reward = 0
         else:
+            # coverage reward: R = -1 if current know exists in past know lists
+            past_know_list = []
             for _q in self._questions:
                 _q_know = [self.know_ind_map[k] for k in _q['knowledge']]
                 past_know_list = past_know_list + _q_know
