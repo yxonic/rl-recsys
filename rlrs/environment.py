@@ -77,6 +77,8 @@ class EERNNEnv(gym.Env):
 
         self._scores = []
 
+        self._know_state = None
+
         self.action_space = spaces.Discrete(self.n_questions)
         # only provide current step observation: score
         # agent should keep track of the history separately
@@ -87,7 +89,10 @@ class EERNNEnv(gym.Env):
         pass
 
     def reset(self):
+        if self._know_state is not None:
+            self._know_state = None
         self._know_state = np.random.rand(self.n_knowledge, )
+        return self._know_state
 
 
 '''
