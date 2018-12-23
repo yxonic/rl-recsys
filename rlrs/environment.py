@@ -198,14 +198,14 @@ class EERNNModel(nn.Module):
         self.n_layers = n_layers
         self.attn_k = attn_k
 
-        self.exercise_net = QuesNet(self.wcnt, self.emb_size, self.ques_h_size, self.n_layers)
-        self.exercise_net.load_emb(self.embs)
+        self.question_net = QuesNet(self.wcnt, self.emb_size, self.ques_h_size, self.n_layers)
+        self.question_net.load_emb(self.embs)
 
         self.seq_net = EERNNSeqNet(self.ques_h_size, self.seq_h_size, self.n_layers, self.attn_k)
 
     def forward(self, question, score, hidden=None):
         ques_h0 = None
-        ques_v, ques_h = self.exercise_net(question.view(-1, 1), ques_h0)
+        ques_v, ques_h = self.question_net(question.view(-1, 1), ques_h0)
         s, h = self.seq_net(ques_v[0], score, hidden)
         if hidden is None:
             hidden = ques_v, h
