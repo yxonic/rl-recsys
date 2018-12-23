@@ -1,3 +1,4 @@
+import abc
 import fret
 import gym
 import gym.spaces as spaces
@@ -9,86 +10,27 @@ import torch.nn.functional as F
 
 
 @fret.configurable
-class RandomEnv(gym.Env):
-    def __init__(self, dataset='zhixue', expected_avg=0.5):
-        self.dataset = dataset
-        self.ques_list = load_question(
-            fret.app['datasets'][dataset]['question_file'])
-        self.know_list, self.know_ind_map = load_knowledge(
-            fret.app['datasets'][dataset]['knowledge_file'])
-        self.n_questions = len(self.ques_list)
-        self.n_knowledge = len(self.know_list)
-        self.expected_avg = expected_avg
+class SPEnv(gym.Env, abc.ABC):
+    """Simulated environment based on some kind of Score Prediction."""
 
-        self._scores = []
-
-        self.action_space = spaces.Discrete(self.n_questions)
-        # only provide current step observation: score
-        # agent should keep track of the history separately
-        self.observation_space = spaces.Box(low=0, high=1, shape=(1,),
-                                            dtype=np.float32)
-        self.reset()
-
-    def reset(self):
-        """Reset environment state. Here we sample a new student."""
-        self._know_state = np.random.rand(self.n_knowledge, )
-
-    def step(self, action):
-        """Receive an action, returns observation, reward of current step,
-        whether the game is done, and some other information."""
-        q = self.ques_list[action]
-        diff = q['difficulty']
-        # get index for each knowledge
-        know = [self.know_ind_map[k] for k in q['knowledge']]
-
-        # set score to 1 if a student masters all knowledge of this question
-        if all(self._know_state[s] > diff for s in know):
-            score = 1.
-        else:
-            score = 0.
-        self._scores.append(score)
-        observation = [score]
-        reward = self.get_reward()
-        done = len(self._scores) > 20  # stop after 20 questions
-        return observation, reward, done, {}
-
-    def get_reward(self):
-        """Calculate reward from internal states."""
-        return -abs(np.mean(self._scores) - self.expected_avg)
-
-    def train(self, records, n_epochs):
-        """Train environment model here under ws with record data."""
-        logger = self.ws.logger('RandomEnv.train')
-        logger.debug('func: <RandomEnv.train>, n_epochs=%d', n_epochs)
-
-
-@fret.configurable
-class EERNNEnv(gym.Env):
     def __init__(self,
                  dataset=('zhixue', 'student record dataset',
                           ['zhixue', 'poj', 'ustcoj']),
-                 expected_avg=(0.5, 'expected average score'),
-                 emb_file=(None, 'pretrained embedding file'),
-                 ques_size=(50, 'question embedding set'),
-                 seq_h_size=(50, 'hidden size of sequence model'),
-                 n_layers=(1, 'number of layers of RNN'),
-                 attn_k=(10, 'top k records for attention in EERNN model')):
-        super(EERNNEnv, self).__init__()
+                 expected_avg=(0.5, 'expected average score')):
         self.dataset = dataset
+
         self.ques_list = load_question(
             fret.app['datasets'][dataset]['question_file'])
         self.know_list, self.know_ind_map = load_knowledge(
             fret.app['datasets'][dataset]['knowledge_file'])
         self.n_questions = len(self.ques_list)
         self.n_knowledge = len(self.know_list)
+
         self.expected_avg = expected_avg
 
-        # states from 1 to t-1 containing questions, scores, knowledge states
+        # session history
         self._questions = []
         self._scores = []
-        self._know_state = None
-
-        self.hidden = None
 
         self.action_space = spaces.Discrete(self.n_questions)
         # only provide current step observation: score
@@ -96,46 +38,36 @@ class EERNNEnv(gym.Env):
         self.observation_space = spaces.Box(low=0, high=1, shape=(1,),
                                             dtype=np.float32)
 
-        # build EERNN model as env
-        self.env = self.build_EERNN_env(emb_file, ques_size, seq_h_size, n_layers, attn_k)
-
-    def step(self, action):
-        # get current states here
-        # ... (to be updated)
-        score = self._scores[-1]
-
-        ques = self.ques_list[action]
-        # ques_diff = ques['difficulty']
-        # know = [self.know_ind_map[k] for k in ques['knowledge']]
-
-        # using EERNN to predict score given ques
-        p_score, hidden = self.env(ques['content'], score, self.hidden)
-
-        observation_ = [p_score]
-        reward = self.get_reward(ques, p_score)
-        done = len(self._scores) > 20
-
-        self._questions.append(ques)
-        self._scores.append(p_score)
-        # update current hidden and score in EERNN
-        self.hidden = hidden
-        return observation_, reward, done, {}
+        self.reset()
 
     def reset(self):
-        if self._know_state is not None:
-            self._know_state = None
-        self._know_state = np.random.rand(self.n_knowledge, )
-        return self._know_state
+        # new session
+        self._questions = []
+        self._scores = []
+        self.sample_student()
 
-    def build_EERNN_env(self, emb_file, ques_size, seq_h_size, n_layers, attn_k, model_para_file):
-        EERNN = EERNNModel(emb_file, ques_size, seq_h_size, n_layers, attn_k)
-        # load EERNN paras here
-        EERNN.load_state_dict(torch.load(model_para_file))
-        return EERNN
+    def step(self, action):
+        self._questions.append(action)
+        q = self.ques_list[action]
+        score = self.exercise(q)
+        self._scores.append(score)
 
-    def get_reward(self, question, predict_score):
+        observation = [score]
+        reward = self.get_reward()
+        done = len(self._scores) > 20  # TODO: configure stop condition
+        return observation, reward, done, {}
+
+    def render(self, mode='human'):
+        pass
+
+    def get_reward(self):
+        # get_reward from session history
+
         # four reward
         # R_coverage, R_change, R_difficulty, R_expected
+
+        question = self._questions[-1]
+        predict_score = self._scores[-1]
 
         question_diff = question['difficulty']
         question_know = [self.know_ind_map[k] for k in question['knowledge']]
@@ -178,14 +110,78 @@ class EERNNEnv(gym.Env):
 
         return reward
 
+    @abc.abstractmethod
+    def sample_student(self):
+        raise NotImplementedError
 
-'''
-Model in environment
-'''
+    @abc.abstractmethod
+    def exercise(self, q):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def train(self, records, args):
+        raise NotImplementedError
 
 
+@fret.configurable
+class RandomEnv(SPEnv):
+    def __init__(self, **cfg):
+        self.know_state = None
+        super(RandomEnv, self).__init__(**cfg)
+
+    def sample_student(self):
+        """Reset environment state. Here we sample a new student."""
+        self.know_state = np.random.rand(self.n_knowledge, )
+
+    def exercise(self, q):
+        """Receive an action, returns observation, reward of current step,
+        whether the game is done, and some other information."""
+        diff = q['difficulty']
+        # get index for each knowledge
+        know = [self.know_ind_map[k] for k in q['knowledge']]
+
+        # set score to 1 if a student masters all knowledge of this question
+        if all(self._know_state[s] > diff for s in know):
+            score = 1.
+        else:
+            score = 0.
+        return score
+
+
+@fret.configurable
+class DeepSPEnv(SPEnv):
+    def __init__(self, sp_model, **cfg):
+        self.sp_model = sp_model
+        self.state = None
+        super(DeepSPEnv, self).__init__(**cfg)
+
+    def sample_student(self):
+        # sample some records
+        records = []
+        # feed into self.sp_model to get state
+        for q, s in records:
+            _, self.state = self.sp_model(q, s, None)
+
+    def exercise(self, q):
+        s, self.state = self.sp_model(q, None, self.state)
+        return s.mean().item()
+
+    def train(self, records, args):
+        pass
+
+
+#####
+# Deep Score Prediction Models
+###
+
+@fret.configurable
 class EERNNModel(nn.Module):
-    def __init__(self, emb_file, ques_size=50, seq_h_size=50, n_layers=1, attn_k=10):
+    def __init__(self,
+                 emb_file=('data/emb_50.txt', 'pretrained embedding file'),
+                 ques_h_size=(50, 'question embedding set'),
+                 seq_h_size=(50, 'hidden size of sequence model'),
+                 n_layers=(1, 'number of layers of RNN'),
+                 attn_k=(10, 'top k records for attention in EERNN model')):
         super(EERNNModel, self).__init__()
         self.emb_file = emb_file
         wcnt, emb_size, words, embs = load_embedding(self.emb_file)
@@ -193,15 +189,15 @@ class EERNNModel(nn.Module):
         self.emb_size = emb_size
         self.words = words
         self.embs = embs
-        self.ques_h_size = ques_size
+        self.ques_h_size = ques_h_size
         self.seq_h_size = seq_h_size
         self.n_layers = n_layers
         self.attn_k = attn_k
 
-        self.question_net = QuesNet(self.wcnt, self.emb_size, self.ques_h_size, self.n_layers)
-        self.question_net.load_emb(self.embs)
+        self.question_net = QuesNet(wcnt, emb_size, ques_h_size, n_layers)
+        self.question_net.load_emb(embs)
 
-        self.seq_net = EERNNSeqNet(self.ques_h_size, self.seq_h_size, self.n_layers, self.attn_k)
+        self.seq_net = EERNNSeqNet(ques_h_size, seq_h_size, n_layers, attn_k)
 
     def forward(self, question, score, hidden=None):
         ques_h0 = None
@@ -275,6 +271,9 @@ class EERNNSeqNet(nn.Module):
 
         pred_v = torch.cat([question, attn_h]).view(1, -1)
         pred = self.score_net(pred_v)
+
+        if score is None:
+            score = pred
 
         # update seq_net
         x = torch.cat([question * (score >= 0.5).type_as(question).expand_as(question),
