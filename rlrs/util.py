@@ -4,7 +4,7 @@ import signal
 
 def critical(f):
     it = iter(f)
-    signal_received = False
+    signal_received = ()
 
     def handler(sig, frame):
         nonlocal signal_received

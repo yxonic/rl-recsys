@@ -1,9 +1,20 @@
 import abc
+import datetime
+import sys
+from itertools import islice
+
 import fret
 import gym
 import gym.spaces as spaces
 import numpy as np
-from .dataprep import load_question, load_knowledge
+import torch
+from statistics import mean
+from torchtext import data
+from tensorboardX import SummaryWriter
+from tqdm import tqdm
+
+from .dataprep import load_dataset
+from .util import critical
 
 
 @fret.configurable
@@ -14,12 +25,7 @@ class SPEnv(gym.Env, abc.ABC):
                  dataset=('zhixue', 'student record dataset',
                           ['zhixue', 'poj', 'ustcoj']),
                  expected_avg=(0.5, 'expected average score')):
-        self.dataset = dataset
-
-        self.ques_list = load_question(
-            fret.app['datasets'][dataset]['question_file'])
-        self.know_list, self.know_ind_map = load_knowledge(
-            fret.app['datasets'][dataset]['knowledge_file'])
+        self.dataset = load_dataset(dataset)
         self.n_questions = len(self.ques_list)
         self.n_knowledge = len(self.know_list)
 
@@ -128,7 +134,7 @@ class RandomEnv(SPEnv):
 
     def sample_student(self):
         """Reset environment state. Here we sample a new student."""
-        self.know_state = np.random.rand(self.n_knowledge, )
+        self.know_state = np.random.rand(self.n_knowledge,)
 
     def exercise(self, q):
         """Receive an action, returns observation, reward of current step,
@@ -164,4 +170,114 @@ class DeepSPEnv(SPEnv):
         return s.mean().item()
 
     def train(self, records, args):
-        pass
+        ws = self.ws
+        logger = ws.logger('DeepSPEnv.train')
+
+        model = self.sp_model
+        model.train()
+        optim = torch.optim.Adam(model.parameters())
+        train_iter = data.Iterator(records, 1)  # one sequence at a time
+        epoch_size = len(train_iter)
+
+        state = self.load_training_state()
+        if args.resume and state:
+            self.load_model('int')
+            train_iter.load_state_dict(state['train_iter_state'])
+            optim.load_state_dict(state['optim_state'])
+            current_run = state['current_run']
+            loss_avg = state['loss_avg']
+            start_epoch = train_iter.epoch
+            n_samples = state['n_samples']
+            initial = train_iter._iterations_this_epoch
+        else:
+            if args.resume:
+                logger.warning('nothing to resume, starting from scratch')
+            elif state:
+                print('has previous training state, overwrite? (y/N) ', end='')
+                c = input()
+                if c.lower() not in ['y', 'yes']:
+                    logger.warning('cancelled (add -r to resume training)')
+                    sys.exit(1)
+
+            n_samples = 0  # track total #samples for plotting
+            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            current_run = ws.log_path / ('run-%s/' % now)
+            loss_avg = []
+            start_epoch = 0
+            initial = 0
+
+        writer = SummaryWriter(str(current_run))
+
+        for epoch in range(start_epoch, args.epochs):
+            epoch_iter = iter(tqdm(islice(train_iter, epoch_size - initial),
+                                   total=epoch_size,
+                                   initial=initial,
+                                   desc=f'Epoch {epoch+1:3d}: ',
+                                   unit='bz'))
+
+            initial = 0
+
+            try:
+                # training
+                for batch in critical(epoch_iter):
+                    # critical section on one batch
+
+                    i = train_iter._iterations_this_epoch
+                    n_samples += len(batch)
+
+                    # backprop on one batch
+                    optim.zero_grad()
+
+                    loss = model()
+
+                    loss.backward()
+                    optim.step()
+
+                    # log loss
+                    loss_avg.append(loss.item())
+                    if args.log_every == len(loss_avg):
+                        writer.add_scalar('train/loss', mean(loss_avg),
+                                          n_samples)
+                        loss_avg = []
+
+                    # save model
+                    if args.save_every > 0 and i % args.save_every == 0:
+                        cp_path = ws / f'model.{epoch}.{i}.pt'
+                        torch.save(model.state_dict(), str(cp_path))
+
+                # save after one epoch
+                cp_path = ws.checkpoint_path / f'model.{epoch+1}.pt'
+                torch.save(model.state_dict(), str(cp_path))
+
+            except KeyboardInterrupt:
+                self.save_training_state({
+                    'current_run': current_run,
+                    'optim': optim,
+                    'train_iter': train_iter,
+                    'n_samples': n_samples,
+                    'loss_avg': loss_avg
+                })
+                self.save_model('int')
+                raise
+
+    def load_model(self, tag):
+        cp_path = self.ws.checkpoint_path / '%s.%s.pt' % (
+            self.sp_model.__class__.__name__, str(tag))
+        self.sp_model.load_state_dict(torch.load(
+            str(cp_path), map_location=lambda s, loc: s))
+
+    def save_model(self, tag):
+        cp_path = self.ws.checkpoint_path / '%s.%s.pt' % (
+            self.sp_model.__class__.__name__, str(tag))
+        torch.save(self.sp_model.state_dict(), cp_path)
+
+    def load_training_state(self):
+        cp_path = self.ws.checkpoint_path / 'training_state.pt'
+        if cp_path.exists():
+            return torch.load(str(cp_path), map_location=lambda s, loc: s)
+        else:
+            return {}
+
+    def save_training_state(self, state):
+        cp_path = self.ws.checkpoint_path / 'training_state.pt'
+        torch.save(state, cp_path)

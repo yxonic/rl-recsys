@@ -22,3 +22,9 @@ fret train_agent    # calls Trainer.train
 ```
 
 You can also copy and/or edit `config.toml` directly to setup modules.
+
+
+## TODOs
+-[ ] Load datasets: questions, words, knowledge, records
+-[ ] `DeepSPEnv.train`: train deep score prediction models on records
+-[ ] Command `train_agent`

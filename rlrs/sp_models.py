@@ -36,16 +36,23 @@ class EERNN(nn.Module):
         self.seq_net = EERNNSeqNet(ques_h_size, seq_h_size, n_layers, attn_k)
 
     def forward(self, question, score, hidden=None):
+        # question: {'id': ..., 'text': ...,
+        #            'difficulty': ..., 'knowledge': ...}
+        ques_text = question['text']
+
         ques_h0 = None
-        ques_v, ques_h = self.question_net(question.view(-1, 1), ques_h0)
+        ques_v, ques_h = self.question_net(ques_text.view(-1, 1), ques_h0)
+
         s, h = self.seq_net(ques_v[0], score, hidden)
+
         if hidden is None:
             hidden = ques_v, h
         else:
-            questions, hs = hidden
-            questions = torch.cat([questions, ques_v])
+            # concat all qs and hs for attention
+            qs, hs = hidden
+            qs = torch.cat([qs, ques_v])
             hs = torch.cat([hs, h])
-            hidden = questions, hs
+            hidden = qs, hs
 
         return s, hidden
 
