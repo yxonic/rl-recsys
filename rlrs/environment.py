@@ -212,7 +212,7 @@ class DeepSPEnv(SPEnv):
 
         writer = SummaryWriter(str(current_run))
 
-        for epoch in range(start_epoch, args.epochs):
+        for epoch in range(start_epoch, args.n_epochs):
             epoch_iter = iter(tqdm(islice(train_iter, epoch_size - initial),
                                    total=epoch_size,
                                    initial=initial,
@@ -225,6 +225,8 @@ class DeepSPEnv(SPEnv):
                 # training
                 for batch in critical(epoch_iter):
                     # critical section on one batch
+                    print(vars(batch))
+                    break
 
                     i = train_iter._iterations_this_epoch
                     n_samples += len(batch)

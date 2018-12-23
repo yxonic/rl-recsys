@@ -40,6 +40,13 @@ class Field:
         return len(self._list)
 
 
+class Record:
+    def get(self, item):
+        qid, score = item.split(',')
+        score = float(score)
+        return score
+
+
 class Questions:
     def __init__(self, dataset, maxlen=400):
         cfg = fret.app['datasets'][dataset]
@@ -129,4 +136,11 @@ def load_embedding(emb_file):
 
 
 def load_record(rec_file):
-    return []
+    field = tt.data.Field(
+        tokenize=Tokenizer(Record()),
+        use_vocab=False)
+    records = tt.data.TabularDataset(
+        rec_file,
+        format='tsv',
+        fields=[('scores', field)])
+    return records
