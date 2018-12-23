@@ -6,10 +6,6 @@ import torch.nn.functional as F
 from .dataprep import load_embedding
 
 
-#####
-# Deep Score Prediction Models
-###
-
 @fret.configurable
 class EERNN(nn.Module):
     def __init__(self,
