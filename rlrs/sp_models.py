@@ -9,14 +9,14 @@ from .dataprep import load_embedding
 @fret.configurable
 class EERNN(nn.Module):
     def __init__(self,
-                 emb_file=('data/emb_50.txt', 'pretrained embedding file'),
+                 emb_file=('data/zhixue/emb_50.txt',
+                           'pretrained embedding file'),
                  ques_h_size=(50, 'question embedding set'),
                  seq_h_size=(50, 'hidden size of sequence model'),
                  n_layers=(1, 'number of layers of RNN'),
                  attn_k=(10, 'top k records for attention in EERNN model')):
         super(EERNN, self).__init__()
-        self.emb_file = emb_file
-        wcnt, emb_size, words, embs = load_embedding(self.emb_file)
+        wcnt, emb_size, words, embs = load_embedding(emb_file)
         self.wcnt = wcnt
         self.emb_size = emb_size
         self.words = words
@@ -27,7 +27,6 @@ class EERNN(nn.Module):
         self.attn_k = attn_k
 
         self.question_net = QuesNet(wcnt, emb_size, ques_h_size, n_layers)
-        self.question_net.load_emb(embs)
 
         self.seq_net = EERNNSeqNet(ques_h_size, seq_h_size, n_layers, attn_k)
 

@@ -13,7 +13,7 @@ from torchtext import data
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
-from .dataprep import load_dataset
+from .dataprep import Questions
 from .util import critical
 
 
@@ -25,9 +25,10 @@ class SPEnv(gym.Env, abc.ABC):
                  dataset=('zhixue', 'student record dataset',
                           ['zhixue', 'poj', 'ustcoj']),
                  expected_avg=(0.5, 'expected average score')):
-        self.dataset = load_dataset(dataset)
-        self.n_questions = len(self.ques_list)
-        self.n_knowledge = len(self.know_list)
+        self.dataset = dataset
+        self.questions = Questions(dataset)
+        self.n_questions = self.questions.n_questions
+        self.n_knowledge = self.questions.n_knowledge
 
         self.expected_avg = expected_avg
 
@@ -150,6 +151,9 @@ class RandomEnv(SPEnv):
             score = 0.
         return score
 
+    def train(self, records, args):
+        pass
+
 
 @fret.configurable
 class DeepSPEnv(SPEnv):
@@ -228,7 +232,8 @@ class DeepSPEnv(SPEnv):
                     # backprop on one batch
                     optim.zero_grad()
 
-                    loss = model()
+                    # TODO: calculate loss
+                    loss = ...
 
                     loss.backward()
                     optim.step()

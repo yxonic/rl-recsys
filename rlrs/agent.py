@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from .dataprep import load_question, load_knowledge, load_embedding
 from .sp_models import QuesNet
 
 # to be update about N_actions and N_states

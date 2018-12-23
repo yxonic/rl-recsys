@@ -1,25 +1,125 @@
+import csv
 import logging
+import fret
 import numpy as np
+import torchtext as tt
 
 logger = logging.getLogger(__name__)
 
 
-def load_question(ques_file):
-    # TODO: read questions as a list, along with id->index map
-    logger.debug('func: <dataprep.load_question>')
-    return [], {}
+class Tokenizer:
+    def __init__(self, words, max_len=None):
+        self.words = words
+        self.max_len = max_len
+
+    def __call__(self, s):
+        words = s.split()[:self.max_len] if self.max_len else s.split()
+        return np.asarray([self.words.get(w) or 0 for w in words])
 
 
-def load_knowledge(know_file):
-    # TODO: read knowledge as a list, along with know->index map
-    logger.debug('func: <dataprep.load_knowledge>')
-    return [], {}
+class OneHot:
+    def __init__(self, kinds):
+        self.kinds = kinds
+        self.size = len(kinds)
+
+    def __call__(self, s):
+        kinds = s.split(',')
+        rv = np.zeros((self.size,), dtype=np.int32)
+        for k in kinds:
+            v = self.kinds[k]
+            if v is not None:
+                rv[v] = 1
+        return rv
 
 
-def load_record(rec_file):
-    # TODO: read record as list of sequences
-    logger.debug('func: <dataprep.load_record>')
-    return []
+class Field:
+    def __init__(self, f):
+        if isinstance(f, str):
+            self._list = open(f).read().strip().split('\n')
+        else:
+            self._list = f
+        self._ind = {k: i for i, k in enumerate(self._list)}
+
+    def __getitem__(self, item):
+        if isinstance(item, int):
+            return self._list[item]
+        else:
+            return self._ind[item]
+
+    def get(self, item):
+        return self._ind[item] if item in self._ind else None
+
+    def __len__(self):
+        return len(self._list)
+
+
+class Questions:
+    def __init__(self, dataset, maxlen=400):
+        cfg = fret.app['datasets'][dataset]
+        self._word = Field(cfg['word_list'])
+        self._know = Field(cfg['knowledge_list'])
+        self.n_words = len(self._word)
+        self.n_knowledge = len(self._know)
+
+        text_field = tt.data.Field(
+            tokenize=Tokenizer(self._word, maxlen),
+            use_vocab=False)
+        self.ques_text = tt.data.TabularDataset(
+            cfg['question_text_file'],
+            format='tsv',
+            fields=[('id', tt.data.Field(sequential=False)),
+                    ('content', text_field)],
+            skip_header=True,
+            csv_reader_params={'quoting': csv.QUOTE_NONE})
+        self.ques_text_ind = {item.id: i
+                              for i, item in enumerate(self.ques_text)}
+
+        knowledge_field = tt.data.Field(
+            tokenize=OneHot(self._know),
+            use_vocab=False)
+        self.ques_know = tt.data.TabularDataset(
+            cfg['question_knowledge_file'],
+            format='tsv',
+            fields=[('id', tt.data.Field(sequential=False)),
+                    ('knowledge', knowledge_field)],
+            skip_header=True,
+            csv_reader_params={'quoting': csv.QUOTE_NONE})
+        self.ques_know = {item.id: item.knowledge for item in self.ques_know}
+
+        self.ques_diff = {}
+        diff_f = open(cfg['question_difficulty_file'])
+        next(diff_f)
+        for line in diff_f:
+            qid, diff = line.strip().split('\t')
+            diff = float(diff)
+            self.ques_diff[qid] = diff
+
+        self.question_set = set(self.ques_text_ind) and \
+            set(self.ques_know) and set(self.ques_diff)
+        self.questions = Field(list(self.question_set))
+        self.n_questions = len(self.questions)
+
+    def __getitem__(self, index):
+        if isinstance(index, int):
+            qid = self.questions[index]
+        else:
+            qid = index
+        if qid in self.question_set:
+            return {
+                'text': self.ques_text[self.ques_text_ind[qid]].content,
+                'knowledge': self.ques_know[qid],
+                'difficulty': self.ques_diff[qid]
+            }
+        else:
+            return None
+
+    @property
+    def knowledge(self):
+        return self._know
+
+    @property
+    def word(self):
+        return self._word
 
 
 def load_embedding(emb_file):
@@ -36,5 +136,9 @@ def load_embedding(emb_file):
         words.append(word)
         embs.append(emb)
 
-    embs = np.asarray(emb)
+    embs = np.asarray(embs)
     return wcnt, emb_size, words, embs
+
+
+def load_record(rec_file):
+    return []
