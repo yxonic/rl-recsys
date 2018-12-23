@@ -9,11 +9,16 @@ pip install -r requirements.txt
 ## Usage
 
 ```sh
-mkdir -p ws/dqn-ekt-exp1
-cd ws/dqn-ekt-exp1
-fret config Trainer <args...>
-fret config agent DQN <args...>
-fret config env EKT <args...>
-fret train_env
-fret train_agent
+mkdir -p ws/dqn-eernn-exp1
+cd ws/dqn-eernn-exp1
+fret config env DeepSPEnv
+fret config sp_model EERNN
+fret config         # check current configuration
+fret train_env      # calls SPEnv.train
+
+fret config Trainer
+fret config agent DQN
+fret train_agent    # calls Trainer.train
 ```
+
+You can also copy and/or edit `config.toml` directly to setup modules.

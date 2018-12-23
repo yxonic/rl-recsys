@@ -4,12 +4,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from .dataprep import load_question, load_knowledge, load_embedding
-from .environment import QuesNet
+from .sp_models import QuesNet
 
 # to be update about N_actions and N_states
 N_STATES = 100
 N_ACTIONS = 50
 TARGET_REPLACE_ITER = 100   # target update frequency
+
 
 @fret.configurable
 class DQN:
@@ -30,7 +31,8 @@ class DQN:
 
         # build DQN network
         self.current_net, self.target_net = Net(), Net()
-        self.optimizer = torch.optim.Adam(self.eval_net.parameters(), lr=learning_rate)
+        self.optimizer = torch.optim.Adam(self.current_net.parameters(),
+                                          lr=learning_rate)
         self.loss_func = nn.MSELoss()
 
     def select_action(self, observation):
@@ -75,10 +77,7 @@ class DQN:
 # RL net which generates action(recommended question) at each step
 # to be updated: input question or question_emb ?
 class Net(nn.Module):
-    def __init__(self,
-                 emb_file=(None, 'pretrained embedding file'),
-                 ques_h_size=(50, 'question embedding set'),
-                 ):
+    def __init__(self, emb_file='data/emb_50.txt', ques_h_size=50):
         super(Net, self).__init__()
 
         self.emb_file = emb_file
