@@ -3,8 +3,9 @@ from .environment import SPEnv
 from .dataprep import load_record
 
 
+# noinspection PyUnusedLocal
 @fret.command
-def train_env(ws, n_epochs=10):
+def train_env(ws, n_epochs=10, resume=True):
     logger = ws.logger('train')
     env: SPEnv = ws.build_module('env')
     logger.info("[%s] %s, %s", ws, env, train_env.args)
