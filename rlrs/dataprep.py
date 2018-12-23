@@ -8,28 +8,15 @@ logger = logging.getLogger(__name__)
 
 
 class Tokenizer:
-    def __init__(self, words, max_len=None):
+    def __init__(self, words, max_len=None, split=' '):
         self.words = words
         self.max_len = max_len
+        self.split = split
 
     def __call__(self, s):
-        words = s.split()[:self.max_len] if self.max_len else s.split()
+        words = s.split(self.split)[:self.max_len] \
+            if self.max_len else s.split()
         return np.asarray([self.words.get(w) or 0 for w in words])
-
-
-class OneHot:
-    def __init__(self, kinds):
-        self.kinds = kinds
-        self.size = len(kinds)
-
-    def __call__(self, s):
-        kinds = s.split(',')
-        rv = np.zeros((self.size,), dtype=np.int32)
-        for k in kinds:
-            v = self.kinds[k]
-            if v is not None:
-                rv[v] = 1
-        return rv
 
 
 class Field:
@@ -75,7 +62,7 @@ class Questions:
                               for i, item in enumerate(self.ques_text)}
 
         knowledge_field = tt.data.Field(
-            tokenize=OneHot(self._know),
+            tokenize=Tokenizer(self._know, split=','),
             use_vocab=False)
         self.ques_know = tt.data.TabularDataset(
             cfg['question_knowledge_file'],
@@ -94,9 +81,9 @@ class Questions:
             diff = float(diff)
             self.ques_diff[qid] = diff
 
-        self.question_set = set(self.ques_text_ind) and \
-            set(self.ques_know) and set(self.ques_diff)
-        self.questions = Field(list(self.question_set))
+        self.question_set = set(self.ques_text_ind) & \
+            set(self.ques_know) & set(self.ques_diff)
+        self.questions = Field(list(sorted(self.question_set)))
         self.n_questions = len(self.questions)
 
     def __getitem__(self, index):
@@ -106,6 +93,7 @@ class Questions:
             qid = index
         if qid in self.question_set:
             return {
+                'id': qid,
                 'text': self.ques_text[self.ques_text_ind[qid]].content,
                 'knowledge': self.ques_know[qid],
                 'difficulty': self.ques_diff[qid]

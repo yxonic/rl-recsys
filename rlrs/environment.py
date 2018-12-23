@@ -142,10 +142,10 @@ class RandomEnv(SPEnv):
         whether the game is done, and some other information."""
         diff = q['difficulty']
         # get index for each knowledge
-        know = [self.know_ind_map[k] for k in q['knowledge']]
+        know = q['knowledge']
 
         # set score to 1 if a student masters all knowledge of this question
-        if all(self._know_state[s] > diff for s in know):
+        if all(self._know_state[i] > diff for i in know):
             score = 1.
         else:
             score = 0.
