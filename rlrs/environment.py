@@ -263,12 +263,10 @@ class DeepSPEnv(SPEnv):
 
                     # save model
                     if args.save_every > 0 and i % args.save_every == 0:
-                        cp_path = ws / f'model.{epoch}.{i}.pt'
-                        torch.save(model.state_dict(), str(cp_path))
+                        self.save_model(f'{epoch}.{i}')
 
                 # save after one epoch
-                cp_path = ws.checkpoint_path / f'model.{epoch+1}.pt'
-                torch.save(model.state_dict(), str(cp_path))
+                self.save_model(epoch + 1)
 
             except KeyboardInterrupt:
                 self.save_training_state({
