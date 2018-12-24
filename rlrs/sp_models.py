@@ -61,9 +61,8 @@ class QuesNet(nn.Module):
         self.n_layers = n_layers
 
         self.embedding_net = nn.Embedding(wcnt, self.emb_size, padding_idx=0)
-
-        self.emb_size = ques_size // 2
-        self.question_net = nn.GRU(self.emb_size, self.ques_size // 2, self.n_layers,
+        self.question_net = nn.GRU(self.emb_size, self.ques_size // 2,
+                                   self.n_layers,
                                    bidirectional=True)
 
     def forward(self, question, hidden):
@@ -86,6 +85,8 @@ class EERNNSeqNet(nn.Module):
                  ):
         super(EERNNSeqNet, self).__init__()
 
+        self.initial_h = nn.Parameter(torch.zeros(n_layers *
+                                                  seq_hidden_size))
         self.ques_size = ques_size  # exercise size
         self.seq_hidden_size = seq_hidden_size
         self.n_layers = n_layers
@@ -96,17 +97,21 @@ class EERNNSeqNet(nn.Module):
         self.score_net = nn.Linear(self.ques_size + self.seq_hidden_size, 1)
 
     def forward(self, question, score, hidden):
-        questions, hs = hidden
-        h = hs[-1:]
+        if hidden is None:
+            h = self.initial_h.view(self.n_layers, 1, self.seq_hidden_size)
+            attn_h = self.initial_h
+        else:
+            questions, hs = hidden
+            h = hs[-1:]
+            alpha = torch.mm(questions, question.view(-1, 1)).view(-1)
+            alpha, idx = alpha.topk(min(len(alpha), self.attn_k), sorted=False)
+            alpha = nn.functional.softmax(alpha.view(1, -1), dim=-1)
+
+            # flatten each h
+            hs = hs.view(-1, self.n_layers * self.seq_hidden_size)
+            attn_h = torch.mm(alpha, torch.index_select(hs, 0, idx)).view(-1)
 
         # prediction
-        alpha = torch.mm(questions, question.view(-1, 1)).view(-1)
-        alpha, idx = alpha.topk(min(len(alpha), self.attn_k), sorted=False)
-        alpha = F.softmax(alpha.view(-1, 1), dim=-1)
-
-        hs = hs.view(-1, self.n_layers * self.seq_hidden_size)
-        attn_h = torch.mm(alpha, torch.index_select(hs, 0, idx)).view(-1)
-
         pred_v = torch.cat([question, attn_h]).view(1, -1)
         pred = self.score_net(pred_v)
 

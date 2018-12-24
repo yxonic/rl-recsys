@@ -5,7 +5,7 @@ from .dataprep import load_record
 
 # noinspection PyUnusedLocal
 @fret.command
-def train_env(ws, n_epochs=10, resume=True):
+def train_env(ws, n_epochs=10, log_every=50, save_every=-1, resume=True):
     logger = ws.logger('train')
     env: SPEnv = ws.build_module('env')
     logger.info("[%s] %s, %s", ws, env, train_env.args)

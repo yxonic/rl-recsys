@@ -8,6 +8,7 @@ import gym
 import gym.spaces as spaces
 import numpy as np
 import torch
+import torch.nn.functional as F
 from statistics import mean
 from torchtext import data
 from tensorboardX import SummaryWriter
@@ -231,9 +232,18 @@ class DeepSPEnv(SPEnv):
                     # backprop on one batch
                     optim.zero_grad()
 
-                    # TODO: calculate loss
-                    loss = ...
+                    hidden = None
+                    losses = []
+                    for q, s in zip(batch.question, batch.score):
+                        q = self.questions[q[0].item()]
+                        s = s.float()
+                        s_, hidden = model(q, s, hidden)
+                        losses.append(F.mse_loss(s_.view(1), s).view(1))
 
+                    if not losses:
+                        continue
+
+                    loss = torch.cat(losses).mean()
                     loss.backward()
                     optim.step()
 

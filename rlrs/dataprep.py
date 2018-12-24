@@ -2,6 +2,7 @@ import csv
 import logging
 import fret
 import numpy as np
+import torch
 import torchtext as tt
 
 logger = logging.getLogger(__name__)
@@ -95,11 +96,17 @@ class Questions:
         else:
             qid = index
         if qid in self.question_set:
+            know = torch.zeros(1, self.n_knowledge)
+            for k in self.ques_know[qid]:
+                know[0, k] = 1
+
             return {
                 'id': qid,
-                'text': self.ques_text[self.ques_text_ind[qid]].content,
-                'knowledge': self.ques_know[qid],
-                'difficulty': self.ques_diff[qid]
+                'text': torch.tensor(
+                    self.ques_text[self.ques_text_ind[qid]].content)
+                    .long().view(-1, 1),
+                'knowledge': know,
+                'difficulty': torch.tensor([self.ques_diff[qid]])
             }
         else:
             return None
