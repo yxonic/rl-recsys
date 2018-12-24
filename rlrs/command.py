@@ -13,7 +13,7 @@ def train_env(ws, n_epochs=3, log_every=32, save_every=2500, resume=True):
 
     rec_file = fret.app['datasets'][env.dataset]['record_file']
     logger.info("loading records: %s", rec_file)
-    records = load_record(rec_file, env.questions)
+    records = load_record(rec_file, env._questions)
     env.train(records, train_env.args)
 
 

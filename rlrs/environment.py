@@ -25,14 +25,14 @@ class SPEnv(gym.Env, abc.ABC):
                           ['zhixue', 'poj', 'ustcoj']),
                  expected_avg=(0.5, 'expected average score')):
         self.dataset = dataset
-        self.questions = Questions(dataset)
-        self.n_questions = self.questions.n_questions
-        self.n_knowledge = self.questions.n_knowledge
+        self._questions = Questions(dataset)
+        self.n_questions = self._questions.n_questions
+        self.n_knowledge = self._questions.n_knowledge
 
         self.expected_avg = expected_avg
 
         # session history
-        self._questions = []
+        self._history = []
         self._scores = []
 
         self.action_space = spaces.Discrete(self.n_questions)
@@ -45,12 +45,12 @@ class SPEnv(gym.Env, abc.ABC):
 
     def reset(self):
         # new session
-        self._questions = []
+        self._history = []
         self._scores = []
         self.sample_student()
 
     def step(self, action):
-        self._questions.append(action)
+        self._history.append(action)
         q = self.ques_list[action]
         score = self.exercise(q)
         self._scores.append(score)
@@ -69,20 +69,20 @@ class SPEnv(gym.Env, abc.ABC):
         # four reward
         # R_coverage, R_change, R_difficulty, R_expected
 
-        question = self._questions[-1]
+        question = self._history[-1]
         predict_score = self._scores[-1]
 
         question_diff = question['difficulty']
         question_know = [self.know_ind_map[k] for k in question['knowledge']]
 
         # calculate reward in current state
-        length = len(self._questions)
+        length = len(self._history)
         if length == 0:
             reward = 0
         else:
             # coverage reward: R = -1 if current know exists in past know lists
             past_know_list = []
-            for _q in self._questions:
+            for _q in self._history:
                 _q_know = [self.know_ind_map[k] for k in _q['knowledge']]
                 past_know_list = past_know_list + _q_know
             past_know_list = set(past_know_list)
@@ -98,7 +98,7 @@ class SPEnv(gym.Env, abc.ABC):
                 R_change = 0
 
             # difficulty reward
-            _q = self._questions[-1]
+            _q = self._history[-1]
             R_difficulty = - ((question_diff - _q['difficulty']) ** 2)
 
             # expected reward
@@ -106,7 +106,7 @@ class SPEnv(gym.Env, abc.ABC):
             if length < step:
                 _qs = self._scores[1:]
             else:
-                _qs = self._questions[-step:]
+                _qs = self._history[-step:]
             R_expected = 1 - np.abs(1 - np.mean(np.asarray(_qs)))
 
             reward = R_expected + R_coverage + R_difficulty + R_change
@@ -232,7 +232,7 @@ class DeepSPEnv(SPEnv):
                         q_index = q[0].item()
                         if q_index == -1:
                             continue
-                        q = self.questions[q_index]
+                        q = self._questions[q_index]
                         s = s.float()
                         s_, hidden = model(q, s, hidden)
                         losses.append(F.mse_loss(s_.view(1), s).view(1))

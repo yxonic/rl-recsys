@@ -8,7 +8,7 @@ import torchtext as tt
 logger = logging.getLogger(__name__)
 
 
-class Tokenizer:
+class Cutter:
     def __init__(self, words, max_len=None, split=' '):
         self.words = words
         self.max_len = max_len
@@ -20,12 +20,12 @@ class Tokenizer:
         return [self.words.get(w) or 0 for w in words]
 
 
-class Field:
-    def __init__(self, f):
-        if isinstance(f, str):
-            self.itos = open(f).read().strip().split('\n')
+class Vocab:
+    def __init__(self, vocab_list):
+        if isinstance(vocab_list, str):
+            self.itos = open(vocab_list).read().strip().split('\n')
         else:
-            self.itos = f
+            self.itos = vocab_list
         self.stoi = {k: i for i, k in enumerate(self.itos)}
         self.stoi['<unk>'] = -1
 
@@ -45,68 +45,68 @@ class Field:
 class Questions:
     def __init__(self, dataset, maxlen=400):
         cfg = fret.app['datasets'][dataset]
-        self._word = Field(cfg['word_list'])
-        self._know = Field(cfg['knowledge_list'])
+        self._word = Vocab(cfg['word_list'])
+        self._know = Vocab(cfg['knowledge_list'])
         self.n_words = len(self._word)
         self.n_knowledge = len(self._know)
 
         text_field = tt.data.Field(
-            tokenize=Tokenizer(self._word, maxlen),
+            tokenize=Cutter(self._word, maxlen),
             use_vocab=False)
-        self.ques_text = tt.data.TabularDataset(
+        self._ques_text = tt.data.TabularDataset(
             cfg['question_text_file'],
             format='tsv',
             fields=[('id', tt.data.Field(sequential=False)),
                     ('content', text_field)],
             skip_header=True,
             csv_reader_params={'quoting': csv.QUOTE_NONE})
-        self.ques_text_ind = {item.id: i
-                              for i, item in enumerate(self.ques_text)}
+        self._ques_text_ind = {item.id: i
+                               for i, item in enumerate(self._ques_text)}
 
         knowledge_field = tt.data.Field(
-            tokenize=Tokenizer(self._know, split=','),
+            tokenize=Cutter(self._know, split=','),
             use_vocab=False)
-        self.ques_know = tt.data.TabularDataset(
+        self._ques_know = tt.data.TabularDataset(
             cfg['question_knowledge_file'],
             format='tsv',
             fields=[('id', tt.data.Field(sequential=False)),
                     ('knowledge', knowledge_field)],
             skip_header=True,
             csv_reader_params={'quoting': csv.QUOTE_NONE})
-        self.ques_know = {item.id: item.knowledge for item in self.ques_know}
+        self._ques_know = {item.id: item.knowledge for item in self._ques_know}
 
-        self.ques_diff = {}
+        self._ques_diff = {}
         diff_f = open(cfg['question_difficulty_file'])
         next(diff_f)
         for line in diff_f:
             qid, diff = line.strip().split('\t')
             diff = float(diff)
-            self.ques_diff[qid] = diff
+            self._ques_diff[qid] = diff
 
-        self.question_set = set(self.ques_text_ind) & \
-            set(self.ques_know) & set(self.ques_diff)
-        self.questions = Field(list(sorted(self.question_set)))
-        self.stoi = self.questions.stoi
-        self.itos = self.questions.itos
-        self.n_questions = len(self.questions)
+        self._ques_set = set(self._ques_text_ind) & \
+                         set(self._ques_know) & set(self._ques_diff)
+        self.vocab = Vocab(list(sorted(self._ques_set)))
+        self.stoi = self.vocab.stoi
+        self.itos = self.vocab.itos
+        self.n_questions = len(self.vocab)
 
     def __getitem__(self, index):
         if isinstance(index, int):
-            qid = self.questions[index]
+            qid = self.vocab[index]
         else:
             qid = index
-        if qid in self.question_set:
+        if qid in self._ques_set:
             know = torch.zeros(1, self.n_knowledge)
-            for k in self.ques_know[qid]:
+            for k in self._ques_know[qid]:
                 know[0, k] = 1
 
             return {
                 'id': qid,
                 'text': torch.tensor(
-                    self.ques_text[self.ques_text_ind[qid]].content)
+                    self._ques_text[self._ques_text_ind[qid]].content)
                     .long().view(-1, 1),
                 'knowledge': know,
-                'difficulty': torch.tensor([self.ques_diff[qid]])
+                'difficulty': torch.tensor([self._ques_diff[qid]])
             }
         else:
             return None
@@ -138,7 +138,7 @@ def load_embedding(emb_file):
     return wcnt, emb_size, words, embs
 
 
-class Qid:
+class QidField:
     def __init__(self, set):
         self._set = set
 
@@ -150,15 +150,15 @@ class Qid:
             return '<unk>'
 
 
-class Score:
+class ScoreField:
     def get(self, item):
         return float(item.split(',')[1])
 
 
 def load_record(rec_file, q_field):
-    question = tt.data.Field(tokenize=Tokenizer(Qid(q_field.stoi)))
+    question = tt.data.Field(tokenize=Cutter(QidField(q_field.stoi)))
     question.vocab = q_field
-    score = tt.data.Field(tokenize=Tokenizer(Score()),
+    score = tt.data.Field(tokenize=Cutter(ScoreField()),
                           use_vocab=False)
 
     fields = {'question': ('question', question), 'score': ('score', score)}
