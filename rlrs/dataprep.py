@@ -16,35 +16,29 @@ class Tokenizer:
     def __call__(self, s):
         words = s.split(self.split)[:self.max_len] \
             if self.max_len else s.split()
-        return np.asarray([self.words.get(w) or 0 for w in words])
+        return [self.words.get(w) or 0 for w in words]
 
 
 class Field:
     def __init__(self, f):
         if isinstance(f, str):
-            self._list = open(f).read().strip().split('\n')
+            self.itos = open(f).read().strip().split('\n')
         else:
-            self._list = f
-        self._ind = {k: i for i, k in enumerate(self._list)}
+            self.itos = f
+        self.stoi = {k: i for i, k in enumerate(self.itos)}
+        self.stoi['<unk>'] = -1
 
     def __getitem__(self, item):
         if isinstance(item, int):
-            return self._list[item]
+            return self.itos[item]
         else:
-            return self._ind[item]
+            return self.stoi[item]
 
     def get(self, item):
-        return self._ind[item] if item in self._ind else None
+        return self.stoi[item] if item in self.stoi else None
 
     def __len__(self):
-        return len(self._list)
-
-
-class Record:
-    def get(self, item):
-        qid, score = item.split(',')
-        score = float(score)
-        return score
+        return len(self.itos)
 
 
 class Questions:
@@ -91,6 +85,8 @@ class Questions:
         self.question_set = set(self.ques_text_ind) & \
             set(self.ques_know) & set(self.ques_diff)
         self.questions = Field(list(sorted(self.question_set)))
+        self.stoi = self.questions.stoi
+        self.itos = self.questions.itos
         self.n_questions = len(self.questions)
 
     def __getitem__(self, index):
@@ -135,12 +131,43 @@ def load_embedding(emb_file):
     return wcnt, emb_size, words, embs
 
 
-def load_record(rec_file):
-    field = tt.data.Field(
-        tokenize=Tokenizer(Record()),
-        use_vocab=False)
-    records = tt.data.TabularDataset(
-        rec_file,
-        format='tsv',
-        fields=[('scores', field)])
+class Qid:
+    def __init__(self, set):
+        self._set = set
+
+    def get(self, item):
+        qid = item.split(',')[0]
+        if qid in self._set:
+            return qid
+        else:
+            return '<unk>'
+
+
+class Score:
+    def get(self, item):
+        return float(item.split(',')[1])
+
+
+def load_record(rec_file, q_field):
+    question = tt.data.Field(tokenize=Tokenizer(Qid(q_field.stoi)))
+    question.vocab = q_field
+    score = tt.data.Field(tokenize=Tokenizer(Score()),
+                          use_vocab=False)
+
+    fields = {'question': ('question', question), 'score': ('score', score)}
+    reader = csv.reader(open(rec_file), quoting=csv.QUOTE_NONE,
+                        delimiter='\t')
+    field_to_index = {'question': 0, 'score': 0}
+    examples = [tt.data.Example.fromCSV(line, fields, field_to_index)
+                for line in reader]
+
+    field_list = []
+    for field in fields.values():
+        if isinstance(field, list):
+            field_list.extend(field)
+        else:
+            field_list.append(field)
+    field_list = field_list
+
+    records = tt.data.Dataset(examples, field_list)
     return records

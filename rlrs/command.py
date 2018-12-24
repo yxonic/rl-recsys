@@ -10,7 +10,8 @@ def train_env(ws, n_epochs=10, resume=True):
     env: SPEnv = ws.build_module('env')
     logger.info("[%s] %s, %s", ws, env, train_env.args)
 
-    records = load_record(fret.app['datasets'][env.dataset]['record_file'])
+    records = load_record(fret.app['datasets'][env.dataset]['record_file'],
+                          env.questions)
     env.train(records, train_env.args)
 
 

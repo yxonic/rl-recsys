@@ -225,9 +225,6 @@ class DeepSPEnv(SPEnv):
                 # training
                 for batch in critical(epoch_iter):
                     # critical section on one batch
-                    print(vars(batch))
-                    break
-
                     i = train_iter._iterations_this_epoch
                     n_samples += len(batch)
 
