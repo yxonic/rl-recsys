@@ -187,8 +187,8 @@ class DeepSPEnv(SPEnv):
         state = self.load_training_state()
         if args.resume and state:
             self.load_model('int')
-            train_iter.load_state_dict(state['train_iter_state'])
-            optim.load_state_dict(state['optim_state'])
+            train_iter.load_state_dict(state['train_iter'])
+            optim.load_state_dict(state['optim'])
             current_run = state['current_run']
             loss_avg = state['loss_avg']
             start_epoch = train_iter.epoch
@@ -196,14 +196,7 @@ class DeepSPEnv(SPEnv):
             initial = train_iter._iterations_this_epoch
         else:
             if args.resume:
-                logger.warning('nothing to resume, starting from scratch')
-            elif state:
-                print('has previous training state, overwrite? (y/N) ', end='')
-                c = input()
-                if c.lower() not in ['y', 'yes']:
-                    logger.warning('cancelled (add -r to resume training)')
-                    sys.exit(1)
-
+                logger.info('nothing to resume, starting from scratch')
             n_samples = 0  # track total #samples for plotting
             now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             current_run = ws.log_path / ('run-%s/' % now)
@@ -250,7 +243,8 @@ class DeepSPEnv(SPEnv):
                     # log loss
                     loss_avg.append(loss.item())
                     if args.log_every == len(loss_avg):
-                        writer.add_scalar('train/loss', mean(loss_avg),
+                        writer.add_scalar('DeepSPEnv.train/loss',
+                                          mean(loss_avg),
                                           n_samples)
                         loss_avg = []
 
@@ -266,8 +260,8 @@ class DeepSPEnv(SPEnv):
             except KeyboardInterrupt:
                 self.save_training_state({
                     'current_run': current_run,
-                    'optim': optim,
-                    'train_iter': train_iter,
+                    'optim': optim.state_dict(),
+                    'train_iter': train_iter.state_dict(),
                     'n_samples': n_samples,
                     'loss_avg': loss_avg
                 })
@@ -275,14 +269,14 @@ class DeepSPEnv(SPEnv):
                 raise
 
     def load_model(self, tag):
-        cp_path = self.ws.checkpoint_path / '%s.%s.pt' % (
-            self.sp_model.__class__.__name__, str(tag))
+        cp_path = self.ws.checkpoint_path / ('%s.%s.pt' % (
+            self.sp_model.__class__.__name__, str(tag)))
         self.sp_model.load_state_dict(torch.load(
             str(cp_path), map_location=lambda s, loc: s))
 
     def save_model(self, tag):
-        cp_path = self.ws.checkpoint_path / '%s.%s.pt' % (
-            self.sp_model.__class__.__name__, str(tag))
+        cp_path = self.ws.checkpoint_path / ('%s.%s.pt' % (
+            self.sp_model.__class__.__name__, str(tag)))
         torch.save(self.sp_model.state_dict(), cp_path)
 
     def load_training_state(self):
@@ -294,4 +288,4 @@ class DeepSPEnv(SPEnv):
 
     def save_training_state(self, state):
         cp_path = self.ws.checkpoint_path / 'training_state.pt'
-        torch.save(state, cp_path)
+        torch.save(state, str(cp_path))

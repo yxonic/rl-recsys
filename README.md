@@ -23,6 +23,13 @@ fret train_agent    # calls Trainer.train
 
 You can also copy and/or edit `config.toml` directly to setup modules.
 
+## Visualization
+
+You can use TensorBoard to visualize training loss, just by typing:
+
+```sh
+tensorboard --logdir ws 
+```
 
 ## TODOs
 -[ ] Load datasets: questions, words, knowledge, records
