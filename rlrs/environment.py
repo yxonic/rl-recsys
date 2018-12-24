@@ -196,7 +196,7 @@ class DeepSPEnv(SPEnv):
             if args.resume:
                 logger.info('nothing to resume, starting from scratch')
             n_samples = 0  # track total #samples for plotting
-            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            now = datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
             current_run = ws.log_path / ('run-%s/' % now)
             loss_avg = []
             mae_avg = []
