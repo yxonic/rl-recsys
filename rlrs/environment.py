@@ -1,6 +1,5 @@
 import abc
 import datetime
-import sys
 from itertools import islice
 
 import fret
@@ -9,7 +8,6 @@ import gym.spaces as spaces
 import numpy as np
 import torch
 import torch.nn.functional as F
-from statistics import mean
 from torchtext import data
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
@@ -190,7 +188,7 @@ class DeepSPEnv(SPEnv):
             train_iter.load_state_dict(state['train_iter'])
             optim.load_state_dict(state['optim'])
             current_run = state['current_run']
-            loss_avg = state['loss_avg']
+            loss_avg, mae_avg, acc_avg = state['avg']
             start_epoch = train_iter.epoch
             n_samples = state['n_samples']
             initial = train_iter._iterations_this_epoch
@@ -201,6 +199,8 @@ class DeepSPEnv(SPEnv):
             now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             current_run = ws.log_path / ('run-%s/' % now)
             loss_avg = []
+            mae_avg = []
+            acc_avg = []
             start_epoch = 0
             initial = 0
 
@@ -227,6 +227,7 @@ class DeepSPEnv(SPEnv):
 
                     hidden = None
                     losses = []
+                    maes = []
                     for q, s in zip(batch.question, batch.score):
                         q_index = q[0].item()
                         if q_index == -1:
@@ -235,6 +236,7 @@ class DeepSPEnv(SPEnv):
                         s = s.float()
                         s_, hidden = model(q, s, hidden)
                         losses.append(F.mse_loss(s_.view(1), s).view(1))
+                        maes.append(F.l1_loss(s_.view(1), s).item())
 
                     if not losses:
                         continue
@@ -245,11 +247,19 @@ class DeepSPEnv(SPEnv):
 
                     # log loss
                     loss_avg.append(loss.item())
+                    mae_avg.extend(maes)
+                    acc_avg.extend(np.asarray(maes) < 0.5)
                     if args.log_every == len(loss_avg):
                         writer.add_scalar('DeepSPEnv.train/loss',
-                                          mean(loss_avg),
+                                          np.mean(loss_avg),
                                           n_samples)
+                        writer.add_scalar('DeepSPEnv.train/mae',
+                                          np.mean(mae_avg), n_samples)
+                        writer.add_scalar('DeepSPEnv.train/acc',
+                                          np.mean(acc_avg), n_samples)
                         loss_avg = []
+                        mae_avg = []
+                        acc_avg = []
 
                     # save model
                     if args.save_every > 0 and i % args.save_every == 0:
@@ -266,7 +276,7 @@ class DeepSPEnv(SPEnv):
                     'optim': optim.state_dict(),
                     'train_iter': train_iter.state_dict(),
                     'n_samples': n_samples,
-                    'loss_avg': loss_avg
+                    'avg': (loss_avg, mae_avg, acc_avg)
                 })
                 self.save_model('int')
                 raise
