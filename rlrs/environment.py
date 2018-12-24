@@ -228,7 +228,10 @@ class DeepSPEnv(SPEnv):
                     hidden = None
                     losses = []
                     for q, s in zip(batch.question, batch.score):
-                        q = self.questions[q[0].item()]
+                        q_index = q[0].item()
+                        if q_index == -1:
+                            continue
+                        q = self.questions[q_index]
                         s = s.float()
                         s_, hidden = model(q, s, hidden)
                         losses.append(F.mse_loss(s_.view(1), s).view(1))
