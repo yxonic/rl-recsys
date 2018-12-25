@@ -12,17 +12,19 @@ def train_env(ws, n_epochs=3, log_every=32, save_every=2500, resume=True):
     logger.info("[%s] %s, %s", ws, env, train_env.args)
 
     rec_file = fret.app['datasets'][env.dataset]['record_file']
-    logger.info("loading records: %s", rec_file)
+    logger.info('loading records: %s', rec_file)
     records = load_record(rec_file, env._questions)
     env.train(records, train_env.args)
 
 
+# noinspection PyUnusedLocal
 @fret.command
-def train_agent(ws, n_epochs=10):
+def train_agent(ws, checkpoint='1', n_epochs=10):
     logger = ws.logger('train')
+
+    logger.info('building env and loading questions')
     trainer = ws.build_module()
+    trainer.env.load_model(checkpoint)
     logger.info("[%s] %s", ws, trainer)
 
-    # TODO: train agent on trained env
-    trainer.load_env(ws.checkpoint_path / 'env.last.pt')
-    trainer.train(n_epochs)
+    trainer.train(train_agent.args)

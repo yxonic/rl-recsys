@@ -12,7 +12,7 @@ pip install -r requirements.txt
 mkdir -p ws/dqn-eernn-exp1
 cd ws/dqn-eernn-exp1
 fret config env DeepSPEnv -dataset zhixue
-fret config sp_model EERNN -emb_file data/zhixue/emb50.txt
+fret config sp_model EERNN -emb_file data/zhixue/emb_50.txt
 fret config         # check current configuration
 fret train_env      # calls SPEnv.train
 

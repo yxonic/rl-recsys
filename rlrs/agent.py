@@ -34,7 +34,7 @@ class DQN:
 
         self.memory_counter = 0
         self.memory_capacity = memory_capacity
-        self.memory = np.zeros(memory_capacity, 4) # store state, action, reward, state_
+        self.memory = np.zeros((memory_capacity, 4)) # store state, action, reward, state_
 
         self._rec_history = []
         self._pred_scores = []
@@ -115,8 +115,8 @@ class DQN:
 # to be updated: input question or question_emb ?
 class SimpleNet(nn.Module):
     def __init__(self,
-                 n_actions = (100, 'number of questions'),
-                 state_feature_size = (50, 'size of state'),
+                 n_actions=100,
+                 state_feature_size=50,
                  ques_h_size=50):
         super(SimpleNet, self).__init__()
 

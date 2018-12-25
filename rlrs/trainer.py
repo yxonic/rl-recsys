@@ -11,6 +11,6 @@ class Trainer:
         logger = self.ws.logger('Trainer.load_env')
         logger.debug('func: <trainer.load_env>, path=%s', path)
 
-    def train(self, n_epochs):
+    def train(self, args):
         logger = self.ws.logger('Trainer.train')
-        logger.debug('func: <trainer.train>, n_epochs=%d', n_epochs)
+        logger.debug('func: <trainer.train>, args: %s', args)
