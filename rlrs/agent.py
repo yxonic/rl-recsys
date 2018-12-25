@@ -34,7 +34,7 @@ class DQN:
 
         self.memory_counter = 0
         self.memory_capacity = memory_capacity
-        self.memory = np.zeros(memory_capacity, self.n_questions * 2 + 2)
+        self.memory = np.zeros(memory_capacity, 4) # store state, action, reward, state_
 
         self._rec_history = []
         self._pred_scores = []
@@ -64,7 +64,6 @@ class DQN:
         self._rec_history.append(action)
         return action
 
-    # to be updated, 需要设定到几步之后才train的嘛
     def store_transition(self, state, action, reward, state_):
         transition = np.hstack((state, action, reward, state_))
         index = self.memory_counter % self.memory_capacity
@@ -80,12 +79,17 @@ class DQN:
         # to be updated, training on batch ?
         sample_index = np.random.choice(self.memory_capacity, self.BATCH_SIZE)
         b_memory = self.memory[sample_index, :]
-        b_s = torch.FloatTensor(b_memory[:, :1])
+        b_s = b_memory[:, 0]
+        b_a = b_memory[:, 1].astype(int)
+        b_r = b_memory[: 2]
+        b_s_ = b_memory[:, -1]
 
-        b_s = torch.FloatTensor(b_memory[:, :N_STATES])
-        b_a = torch.LongTensor(b_memory[:, N_STATES:N_STATES + 1].astype(int))
-        b_r = torch.FloatTensor(b_memory[:, N_STATES + 1:N_STATES + 2])
-        b_s_ = torch.FloatTensor(b_memory[:, -N_STATES:])
+        b_s_feature = self.generate_state_feature(b_s)
+
+        b_s = torch.FloatTensor(b_memory[:, 0])
+        b_a = torch.LongTensor(b_memory[:, 1].astype(int))
+        b_r = torch.FloatTensor(b_memory[: 2])
+        b_s_ = torch.FloatTensor(b_memory[:, -1])
 
         q_current = self.current_net(b_s).gather(1, b_a)
         q_next = self.target_net(b_s_).detach()
