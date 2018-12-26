@@ -40,6 +40,8 @@ class ValueBasedTrainer:
             self.env.reset()
             state = self.init_state()
 
+            ep_sum_reward = 0
+
             try:
                 for _ in critical():
                     # select action
@@ -47,7 +49,10 @@ class ValueBasedTrainer:
 
                     # take action in env
                     ob, reward, done, info = self.env.step(action)
+
                     state_ = self.make_state(action, ob, done)
+
+                    ep_sum_reward += reward
 
                     # save records
                     self.replay_memory.push(
@@ -61,7 +66,10 @@ class ValueBasedTrainer:
                     batch = self.make_batch(samples)
 
                     # train on batch
-                    self.agent.train_on_batch(batch)
+                    if self.replay_memory.counter > self.replay_memory.capacity:
+                        self.agent.train_on_batch(batch)
+                        if done:
+                            logger.info('Ep: ', i_episode, '| Ep_r: ', round(ep_sum_reward, 3))
 
                     if done:
                         break
@@ -96,8 +104,18 @@ class ValueBasedTrainer:
 
     def make_batch(self, samples):
         # TODO: make batched sequential inputs for agent network
+        batch_states = [i.state for i in samples]
+        batch_actions = [i.action for i in samples]
+        batch_states_ = [i.next_state for i in samples]
+        batch_rewards = [i.reward for i in samples]
+
+        # TODO: about mask
+        return batch_states, batch_actions, batch_states_, batch_rewards, []
+
+        '''
         return [[..., ...],
                 ...,
                 [..., ...],
                 ...,
                 ...]  # mask is for setting Q(ending states) to 0
+        '''

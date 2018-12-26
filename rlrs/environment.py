@@ -53,10 +53,16 @@ class SPEnv(gym.Env, abc.ABC):
     def step(self, action):
         self._history.append(action)
         q = self.questions[action]
+
+        # generate predicted score
         score = self.exercise(q)
         self._scores.append(score)
 
-        observation = [score]
+        # state = one-hot of ques-knowledge where value = score
+        # q_know = [self.knowledge[k.item()] for k in q['knowledge'].max(0)[1]]
+        # q_k_v = torch.zeros(1, q_know).scatter_(dim=1, index=torch.LongTensor(q_know).view(1, -1), value=score)
+
+        observation = score
         reward = self.get_reward()
         done = len(self._scores) > 20  # TODO: configure stop condition
         return observation, reward, done, {}

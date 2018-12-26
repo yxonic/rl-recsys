@@ -30,11 +30,12 @@ class DQN:
         self.greedy_epsilon = greedy_epsilon
         self.gama = gama
 
+        self.n_knowledges = fret.app['datasets'][dataset]['n_knowledges']
         self.n_actions = fret.app['datasets'][dataset]['n_actions']
 
-        self.memory_counter = 0
-        self.memory_capacity = memory_capacity
-        self.memory = np.zeros((memory_capacity, 4)) # store state, action, reward, state_
+        # self.memory_counter = 0
+        # self.memory_capacity = memory_capacity
+        # self.memory = np.zeros((memory_capacity, 4)) # store state, action, reward, state_
 
         # build DQN network
         self.current_net = SimpleNet(self.n_actions, 50, self.n_actions)
@@ -47,14 +48,6 @@ class DQN:
         return ReplayMemory(size)
 
     def select_action(self, state):
-        # to be updated of input observation
-        # self._pred_scores.append(p_score)
-
-        # generate
-        # _action = self._rec_history[-1]
-        # feature = self.generate_state_feature(_action, p_score)
-        # feature = torch.unsqueeze(torch.FloatTensor(feature), 0)
-
         if np.random.uniform() < self.greedy_epsilon:
             action_values = self.current_net(state)
             action = torch.max(action_values, 1)[1].numpy()
@@ -77,31 +70,6 @@ class DQN:
 
     # to be updated
     def train_on_batch(self, batch):
-        '''
-        if self.learn_step_counter % TARGET_REPLACE_ITER == 0:
-            self.target_net.load_state_dict(self.current_net.state_dict())
-        self.learn_step_counter += 1
-
-
-        # to be updated, training on batch ?
-        sample_index = np.random.choice(self.memory_capacity, self.BATCH_SIZE)
-        b_memory = self.memory[sample_index, :]
-        b_s = b_memory[:, 0]
-        b_a = b_memory[:, 1].astype(int)
-        b_r = b_memory[: 2]
-        b_s_ = b_memory[:, -1]
-
-        # b_s_feature = self.generate_state_feature(b_s)
-
-        # b_s = torch.FloatTensor(b_memory[:, 0])
-        # b_a = torch.LongTensor(b_memory[:, 1].astype(int))
-        # b_r = torch.FloatTensor(b_memory[: 2])
-        # b_s_ = torch.FloatTensor(b_memory[:, -1])
-
-        q_current = self.current_net(b_s).gather(1, b_a)
-        q_next = self.target_net(b_s_).detach()
-        q_target = b_r + self.gama * q_next.max(1)[0]
-        '''
         ws = self.ws
         s, a, s_, r, mask = batch
 
@@ -109,7 +77,12 @@ class DQN:
             self.target_net.load_state_dict(self.eval_net.state_dict())
         self.learn_step_counter += 1
 
-        q_current = self.current_net(a, s).gather(1, a)
+        s = torch.FloatTensor(s)
+        a = torch.LongTensor(a).astype(int)
+        s_ = torch.FloatTensor(s_)
+        r = torch.FloatTensor(r)
+
+        q_current = self.current_net(s).gather(1, a)
         q_next = self.target_net(a, s_).detach()
         q_target = r + self.gama * q_next.max(1)[0]
 
@@ -118,10 +91,6 @@ class DQN:
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
-
-        # feature_hot = torch.zeros(1, self.n_questions)
-        # feature_hot = feature_hot.scatter_(dim=0, index=torch.from_numpy(action), value=score)
-        # return feature_hot
 
     def save_model(self, tag):
         pass
@@ -140,29 +109,29 @@ class DQN:
 # to be updated: input question or question_emb ?
 class SimpleNet(nn.Module):
     def __init__(self,
-                 state_feature_size=50,
+                 n_knowledges=50,
                  ques_h_size=50,
                  n_actions=100):
         super(SimpleNet, self).__init__()
 
         self.n_actions = n_actions
-        self.state_feature_size = state_feature_size
+        self.state_size = n_knowledges
         self.ques_h_size = ques_h_size
 
-        self.input_net = nn.Linear(self.state_feature_size, 200)
+        self.input_net = nn.Linear(self.state_size, 200)
         self.out_net = nn.Linear(200, self.n_actions)
         # self.input_net.weight.data.normal_(0, 0.1)
         # self.out_net.weight.data.normal_(0, 0.1)
 
-    def forward(self, action, score):
+    def forward(self, x):
         # input current state: (question, score)
         # generate next action values (question_)
         # one hot feature from (question, score)
-        feature_x = self.generate_state_feature()
-        feature_x = torch.unsqueeze(torch.FloatTensor(feature_x), 0)
+        # feature_x = self.generate_state_feature()
+        # feature_x = torch.unsqueeze(torch.FloatTensor(feature_x), 0)
 
-        feature_x = F.relu(self.input_net(feature_x))
-        action_values = self.out_net(feature_x)
+        x = F.relu(self.input_net(x))
+        action_values = self.out_net(x)
         return action_values
 
     def generate_state_feature(self, action, score):
@@ -188,15 +157,15 @@ class GRUNet(nn.Module):
         self.seq_net = nn.GRU(self.state_feature_size, self.seq_h_size, self.n_layers)
         self.action_net = nn.Linear(self.seq_h_size, self.action_size)
 
-    def forward(self, action, score, hidden):
+    def forward(self, x, hidden):
         if hidden is None:
             h = self.initial_h.view(self.n_layers, 1, self.seq_hidden_size)
         else:
             h = hidden
 
-        feature_x = self.generate_state_feature(action, score)
-        feature_x = torch.FloatTensor(feature_x).view(1, 1, -1)
-        _, h = self.seq_net(feature_x, h)
+        # feature_x = self.generate_state_feature(action, score)
+        # feature_x = torch.FloatTensor(feature_x).view(1, 1, -1)
+        _, h = self.seq_net(x, h)
         action_values = self.action_net(h)
         return action_values, h
 
@@ -210,14 +179,20 @@ class ReplayMemory(object):
     def __init__(self, capacity):
         self.capacity = capacity
         self.memory = deque(maxlen=capacity)
-        self.position = 0
+        # self.position = 0
+        self.counter = 0
 
     def push(self, trans):
         """Saves a transition."""
         if len(self.memory) < self.capacity:
             self.memory.append(None)
+        '''
         self.memory[self.position] = trans
         self.position = (self.position + 1) % self.capacity
+        '''
+        position = self.counter % self.capacity
+        self.memory[position] = trans
+        self.counter += 1
 
     def sample(self, batch_size):
         return random.sample(self.memory, batch_size)
