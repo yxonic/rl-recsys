@@ -1,5 +1,6 @@
 import fret
 import numpy as np
+import random
 import torch
 import torch.nn as nn
 from .dataprep import Questions
@@ -14,14 +15,16 @@ class Trainer:
                  agent=(None, 'RL agent'),
                  dataset=('zhixue', 'student record dataset',
                           ['zhixue', 'poj', 'ustcoj']),
+                 memory_capacity=(500, 'memory size'),
                  ):
         self.env = env
         self.agent = agent
+        self.dataset = dataset
+        self.memory_capacity = memory_capacity
+
         self.rec_history = []
         self.reward_history = []
         self.pred_score_history = []
-
-        # self.memory = np.zeros()
 
         self.dataset = dataset
         self._questions = Questions(dataset)
@@ -46,30 +49,34 @@ class Trainer:
 
         # RL agent training process here
         for epoch in range(args.epoch):
-            #TODO: start process: reset env and randomly generate a first recommendation
+            # start process: reset env
             self.rec_history = []
             self.reward_history = []
             self.pred_score_history = []
-            state_score = self.env.reset()
+            self.env.reset()
 
             ep_reward = 0
             while True:
-                action = self.agent.select_action(state_score)
+                if len(self.rec_history) == 0:
+                    # TODO: randomly generate a first recommendation
+                    action = self.agent.random_select_action()
+                else:
+                    state_score = self.pred_score_history[-1]
+                    action = self.agent.select_action(state_score)
+
                 # take action in env
                 state_score_, reward, done, info = self.env.step(action)
 
                 # save records
                 self.rec_history.append(action)
-                self.pred_score_history.append(state_score_)
                 self.reward_history.append(reward)
+                self.pred_score_history.append(state_score_)
 
                 ep_reward += reward
 
                 # update parameters in agent
                 #TODO: training on batch? and calculate q_current, q_next
-                sample_index = np.random.choice(self.memory_capacity, self.BATCH_SIZE)
-                q_current = 0
-                q_next = 0
+                self.agent.learn(self.rec_history[-1], state_score, action, reward, state_score_)
 
     def load_agent(self, path=None):
         logger = self.ws.logger('Trainer.load_agent')

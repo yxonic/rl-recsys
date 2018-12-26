@@ -63,17 +63,21 @@ class DQN:
         # self._rec_history.append(action)
         return action
 
+    '''
     def store_transition(self, state, action, reward, state_):
         transition = np.hstack((state, action, reward, state_))
         index = self.memory_counter % self.memory_capacity
         self.memory[index:] = transition
         self.memory_counter += 1
+    '''
 
     # to be updated
-    def learn(self):
+    def learn(self, _a, s, a, r, s_):
+        '''
         if self.learn_step_counter % TARGET_REPLACE_ITER == 0:
             self.target_net.load_state_dict(self.current_net.state_dict())
         self.learn_step_counter += 1
+
 
         # to be updated, training on batch ?
         sample_index = np.random.choice(self.memory_capacity, self.BATCH_SIZE)
@@ -93,6 +97,15 @@ class DQN:
         q_current = self.current_net(b_s).gather(1, b_a)
         q_next = self.target_net(b_s_).detach()
         q_target = b_r + self.gama * q_next.max(1)[0]
+        '''
+
+        if self.learn_step_counter % TARGET_REPLACE_ITER == 0:
+            self.target_net.load_state_dict(self.eval_net.state_dict())
+        self.learn_step_counter += 1
+
+        q_current = self.current_net(_a, s).gather(1, a)
+        q_next = self.target_net(a, s_).detach()
+        q_target = r + self.gama * q_next.max(1)[0]
 
         loss = self.loss_func(q_current, q_target)
 
