@@ -1,3 +1,6 @@
+import random
+from collections import deque
+
 import fret
 import torch
 import torch.nn as nn
@@ -17,26 +20,21 @@ class DQN:
     def __init__(self,
                  memory_capacity=(2000, 'max saved memory states'),
                  learning_rate=(0.001, 'learning rate'),
-                 greedy_epsilon=(0.9, 'greedy policy'),
+                 greedy_epsilon=(0.0, 'greedy policy'),
                  gama=(0.9, 'reward discount rate'),
-                 n_actions=(100, 'equals to n_questions'),
-                 double_q = False,
+                 double_q=False,
+                 dataset=fret.ref('env.dataset')
                  ):
         self.learn_step_counter = 0
         self.learning_rate = learning_rate
         self.greedy_epsilon = greedy_epsilon
         self.gama = gama
 
-        # self.dataset = dataset
-        # self._questions = Questions(dataset)
-        self.n_actions = n_actions
+        self.n_actions = fret.app['datasets'][dataset]['n_actions']
 
         self.memory_counter = 0
         self.memory_capacity = memory_capacity
         self.memory = np.zeros((memory_capacity, 4)) # store state, action, reward, state_
-
-        # self._rec_history = []
-        # self._pred_scores = []
 
         # build DQN network
         self.current_net = SimpleNet(self.n_actions, 50, self.n_actions)
@@ -44,9 +42,12 @@ class DQN:
         self.optimizer = torch.optim.Adam(self.current_net.parameters(), lr=learning_rate)
         self.loss_func = nn.MSELoss()
 
-    def select_action(self, observation):
+    @staticmethod
+    def make_replay_memory(size):
+        return ReplayMemory(size)
+
+    def select_action(self, state):
         # to be updated of input observation
-        action_ques, p_score = observation
         # self._pred_scores.append(p_score)
 
         # generate
@@ -55,10 +56,10 @@ class DQN:
         # feature = torch.unsqueeze(torch.FloatTensor(feature), 0)
 
         if np.random.uniform() < self.greedy_epsilon:
-            action_values = self.current_net(action_ques, p_score)
-            action = torch.max(action_values, 1)[1].data.numpy()
+            action_values = self.current_net(state)
+            action = torch.max(action_values, 1)[1].numpy()
         else:
-            action = np.random.randint(0, self.n_questions)
+            action = np.random.randint(0, self.n_actions)
 
         # self._rec_history.append(action)
         return action
@@ -71,8 +72,11 @@ class DQN:
         self.memory_counter += 1
     '''
 
+    def init_training(self):
+        pass
+
     # to be updated
-    def learn(self, _a, s, a, r, s_):
+    def train_on_batch(self, batch):
         '''
         if self.learn_step_counter % TARGET_REPLACE_ITER == 0:
             self.target_net.load_state_dict(self.current_net.state_dict())
@@ -98,12 +102,14 @@ class DQN:
         q_next = self.target_net(b_s_).detach()
         q_target = b_r + self.gama * q_next.max(1)[0]
         '''
+        ws = self.ws
+        s, a, s_, r, mask = batch
 
         if self.learn_step_counter % TARGET_REPLACE_ITER == 0:
             self.target_net.load_state_dict(self.eval_net.state_dict())
         self.learn_step_counter += 1
 
-        q_current = self.current_net(_a, s).gather(1, a)
+        q_current = self.current_net(a, s).gather(1, a)
         q_next = self.target_net(a, s_).detach()
         q_target = r + self.gama * q_next.max(1)[0]
 
@@ -116,6 +122,18 @@ class DQN:
         # feature_hot = torch.zeros(1, self.n_questions)
         # feature_hot = feature_hot.scatter_(dim=0, index=torch.from_numpy(action), value=score)
         # return feature_hot
+
+    def save_model(self, tag):
+        pass
+
+    def load_model(self, tag):
+        pass
+
+    def state_dict(self):
+        pass
+
+    def load_state_dict(self):
+        pass
 
 
 # RL net which generates action(recommended question) at each step
@@ -188,8 +206,21 @@ class GRUNet(nn.Module):
         return feature_hot
 
 
+class ReplayMemory(object):
+    def __init__(self, capacity):
+        self.capacity = capacity
+        self.memory = deque(maxlen=capacity)
+        self.position = 0
 
+    def push(self, trans):
+        """Saves a transition."""
+        if len(self.memory) < self.capacity:
+            self.memory.append(None)
+        self.memory[self.position] = trans
+        self.position = (self.position + 1) % self.capacity
 
+    def sample(self, batch_size):
+        return random.sample(self.memory, batch_size)
 
-
-
+    def __len__(self):
+        return len(self.memory)

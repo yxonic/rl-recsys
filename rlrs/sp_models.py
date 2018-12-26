@@ -9,13 +9,13 @@ from .dataprep import load_embedding
 @fret.configurable
 class EERNN(nn.Module):
     def __init__(self,
-                 emb_file=('data/zhixue/emb_50.txt',
-                           'pretrained embedding file'),
+                 dataset=fret.ref('env.dataset'),
                  ques_h_size=(50, 'question embedding set'),
                  seq_h_size=(50, 'hidden size of sequence model'),
                  n_layers=(1, 'number of layers of RNN'),
                  attn_k=(10, 'top k records for attention in EERNN model')):
         super(EERNN, self).__init__()
+        emb_file = 'data/%s/emb_50.txt' % dataset
         wcnt, emb_size, words, embs = load_embedding(emb_file)
         self.wcnt = wcnt
         self.emb_size = emb_size
@@ -116,7 +116,7 @@ class EERNNSeqNet(nn.Module):
         pred = self.score_net(pred_v)
 
         if score is None:
-            score = pred
+            score = pred.flatten()
 
         # update seq_net
         x = torch.cat([question * (score >= 0.5).type_as(question).expand_as(question),

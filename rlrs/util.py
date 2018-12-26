@@ -1,9 +1,13 @@
+import itertools
 import logging
 import signal
 
 
-def critical(f):
-    it = iter(f)
+def critical(f=None):
+    if f is not None:
+        it = iter(f)
+    else:
+        it = itertools.count()
     signal_received = ()
 
     def handler(sig, frame):

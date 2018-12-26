@@ -1,91 +1,103 @@
+from collections import namedtuple
+
 import fret
 import numpy as np
 import random
 import torch
 import torch.nn as nn
-from .dataprep import Questions
+import torch.optim as optim
+
+from .environment import SPEnv
 from .agent import DQN
+from .util import critical
 
 TARGET_REPLACE_ITER = 100
+Transition = namedtuple('Transition',
+                        ('state', 'action', 'next_state', 'reward'))
+
 
 @fret.configurable
-class Trainer:
-    def __init__(self,
-                 env=(None, 'environment'),
-                 agent=(None, 'RL agent'),
-                 dataset=('zhixue', 'student record dataset',
-                          ['zhixue', 'poj', 'ustcoj']),
-                 memory_capacity=(500, 'memory size'),
-                 ):
+class ValueBasedTrainer:
+    def __init__(self, env: SPEnv, agent: DQN,
+                 memory_capacity=(500, 'replay memory size')):
         self.env = env
         self.agent = agent
-        self.dataset = dataset
-        self.memory_capacity = memory_capacity
-
-        self.rec_history = []
-        self.reward_history = []
-        self.pred_score_history = []
-
-        self.dataset = dataset
-        self._questions = Questions(dataset)
-        self.n_questions = self._questions.n_questions
-
-    def train_agent(self, args):
-        logger = self.ws.logger('Trainer.train_agent')
-        if self.env is None:
-            logger.info('no environment')
-            exit(0)
-        # self.load_env()
-
-        if self.agent is None:
-            logger.info('no agent loading, build new agent')
-            self.agent = DQN(memory_capacity=500,
-                             learning_rate=0.001,
-                             greedy_epsilon=0.9,
-                             gama=0.9,
-                             n_actions=self.n_questions,
-                             double_q=False)
-        # self.load_agent()
-
-        # RL agent training process here
-        for epoch in range(args.epoch):
-            # start process: reset env
-            self.rec_history = []
-            self.reward_history = []
-            self.pred_score_history = []
-            self.env.reset()
-
-            ep_reward = 0
-            while True:
-                if len(self.rec_history) == 0:
-                    # TODO: randomly generate a first recommendation
-                    action = self.agent.random_select_action()
-                else:
-                    state_score = self.pred_score_history[-1]
-                    action = self.agent.select_action(state_score)
-
-                # take action in env
-                state_score_, reward, done, info = self.env.step(action)
-
-                # save records
-                self.rec_history.append(action)
-                self.reward_history.append(reward)
-                self.pred_score_history.append(state_score_)
-
-                ep_reward += reward
-
-                # update parameters in agent
-                #TODO: training on batch? and calculate q_current, q_next
-                self.agent.learn(self.rec_history[-1], state_score, action, reward, state_score_)
-
-    def load_agent(self, path=None):
-        logger = self.ws.logger('Trainer.load_agent')
-        logger.debug('func: <trainer.load_agent>, path=%s', path)
-
-    def load_env(self, path=None):
-        logger = self.ws.logger('Trainer.load_env')
-        logger.debug('func: <trainer.load_env>, path=%s', path)
+        self.replay_memory = agent.make_replay_memory(memory_capacity)
+        self._inputs = []
 
     def train(self, args):
-        logger = self.ws.logger('Trainer.train')
+        logger = self.ws.logger('ValueBasedTrainer.train')
         logger.debug('func: <trainer.train>, args: %s', args)
+
+        if args.resume:
+            state = self.load_training_state()
+        else:
+            self.agent.init_training()
+
+        # RL agent training process here
+        # TODO: logging, saving checkpoints
+        for i_episode in range(args.n_episodes):
+            self.env.reset()
+            state = self.init_state()
+
+            try:
+                for _ in critical():
+                    # select action
+                    action = self.agent.select_action(state)
+
+                    # take action in env
+                    ob, reward, done, info = self.env.step(action)
+                    state_ = self.make_state(action, ob, done)
+
+                    # save records
+                    self.replay_memory.push(
+                        Transition(state, action, state_, reward))
+
+                    # update parameters in agent
+                    # sample from replay memory
+                    if len(self.replay_memory) < args.batch_size:
+                        continue
+                    samples = self.replay_memory.sample(args.batch_size)
+                    batch = self.make_batch(samples)
+
+                    # train on batch
+                    self.agent.train_on_batch(batch)
+
+                    if done:
+                        break
+                    state = state_
+            except KeyboardInterrupt:
+                self.save_training_state({'replay': self.replay_memory,
+                                          'agent': self.agent.state_dict()})
+
+    def load_training_state(self):
+        cp_path = self.ws.checkpoint_path / 'training_state.pt'
+        if cp_path.exists():
+            return torch.load(str(cp_path), map_location=lambda s, loc: s)
+        else:
+            return {}
+
+    def save_training_state(self, state):
+        cp_path = self.ws.checkpoint_path / 'training_state.pt'
+        torch.save(state, str(cp_path))
+
+    def make_state(self, action, ob, done):
+        if done:
+            return None
+        q = self.env.questions[action]
+        i = torch.cat([(q['knowledge'] * q['difficulty']).view(1, -1),
+                       torch.tensor(ob).view(1, 1)], dim=1)
+        self._inputs.append(i)
+        return torch.cat(self._inputs, dim=0).unsqueeze(1)
+
+    def init_state(self):
+        self._inputs = [torch.zeros(1, self.env.n_knowledge + 1)]
+        return self._inputs[-1].unsqueeze(1)
+
+    def make_batch(self, samples):
+        # TODO: make batched sequential inputs for agent network
+        return [[..., ...],
+                ...,
+                [..., ...],
+                ...,
+                ...]  # mask is for setting Q(ending states) to 0
