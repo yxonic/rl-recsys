@@ -93,13 +93,19 @@ class ValueBasedTrainer:
         if done:
             return None
         q = self.env.questions[action]
+        '''
         i = torch.cat([(q['knowledge'] * q['difficulty']).view(1, -1),
                        torch.tensor(ob).view(1, 1)], dim=1)
+        '''
+        kd = (q['knowledge'] * q['difficulty']).view(1, -1)
+        i = torch.cat([kd * (ob >= 0.5).type_as(kd).expand_as(kd),
+                       kd * (ob < 0.5).type_as(kd).expand_as(kd)])
         self._inputs.append(i)
         return torch.cat(self._inputs, dim=0).unsqueeze(1)
 
     def init_state(self):
-        self._inputs = [torch.zeros(1, self.env.n_knowledge + 1)]
+        # self._inputs = [torch.zeros(1, self.env.n_knowledge + 1)]
+        self._inputs = [torch.zeros(1, self.env.n_knowledge * 2)]
         return self._inputs[-1].unsqueeze(1)
 
     def make_batch(self, samples):
