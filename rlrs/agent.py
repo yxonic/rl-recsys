@@ -38,8 +38,8 @@ class DQN:
         # self.memory = np.zeros((memory_capacity, 4)) # store state, action, reward, state_
 
         # build DQN network
-        self.current_net = SimpleNet(self.n_actions, 50, self.n_actions)
-        self.target_net = SimpleNet(self.n_actions, 50, self.n_actions)
+        self.current_net = SimpleNet(self.n_knowledges, self.n_actions)
+        self.target_net = SimpleNet(self.n_knowledges, self.n_actions)
         self.optimizer = torch.optim.Adam(self.current_net.parameters(), lr=learning_rate)
         self.loss_func = nn.MSELoss()
 
@@ -110,26 +110,20 @@ class DQN:
 class SimpleNet(nn.Module):
     def __init__(self,
                  n_knowledges=50,
-                 ques_h_size=50,
                  n_actions=100):
         super(SimpleNet, self).__init__()
 
         self.n_actions = n_actions
         self.state_size = n_knowledges
-        self.ques_h_size = ques_h_size
+        # self.h_size = h_size
 
-        self.input_net = nn.Linear(self.state_size, 200)
+        self.input_net = nn.Linear(self.state_size * 2, 200)
         self.out_net = nn.Linear(200, self.n_actions)
         # self.input_net.weight.data.normal_(0, 0.1)
         # self.out_net.weight.data.normal_(0, 0.1)
 
     def forward(self, x):
-        # input current state: (question, score)
-        # generate next action values (question_)
-        # one hot feature from (question, score)
-        # feature_x = self.generate_state_feature()
-        # feature_x = torch.unsqueeze(torch.FloatTensor(feature_x), 0)
-
+        x, _ = torch.max(x, 0)
         x = F.relu(self.input_net(x))
         action_values = self.out_net(x)
         return action_values
