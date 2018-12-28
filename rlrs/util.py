@@ -5,6 +5,8 @@ import signal
 import torch
 from torch.nn.utils.rnn import pack_sequence
 
+default_sigint_handler = signal.getsignal(signal.SIGINT)
+
 
 def critical(f=None):
     if f is not None:
@@ -20,11 +22,11 @@ def critical(f=None):
 
     while True:
         try:
-            old_handler = signal.signal(signal.SIGINT, handler)
+            signal.signal(signal.SIGINT, handler)
             yield next(it)
-            signal.signal(signal.SIGINT, old_handler)
+            signal.signal(signal.SIGINT, default_sigint_handler)
             if signal_received:
-                old_handler(*signal_received)
+                default_sigint_handler(*signal_received)
         except StopIteration:
             break
 

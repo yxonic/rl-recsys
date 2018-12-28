@@ -40,7 +40,8 @@ class ValueBasedTrainer:
             self.agent.load_state_dict(state['agent'])
         else:
             now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            current_run = str(self.ws.log_path / ('run-%s/' % now))
+            current_run = str(self.ws.log_path /
+                              ('ValueBasedTrainer.train-%s/' % now))
             start_episode = 0
             i_batch = 0
             self.agent.init_training()
@@ -49,12 +50,12 @@ class ValueBasedTrainer:
 
         # RL agent training process here
         for i_episode in tqdm(range(start_episode, args.n_episodes)):
-            self.env.reset()
-            state = self.init_state()
-
-            ep_sum_reward = 0
-
             try:
+                self.env.reset()
+                state = self.init_state()
+
+                ep_sum_reward = 0
+
                 for _ in critical():
                     i_batch += 1
 
@@ -100,14 +101,16 @@ class ValueBasedTrainer:
                 raise
 
     def load_training_state(self):
-        cp_path = self.ws.checkpoint_path / 'training_state.pt'
+        cp_path = self.ws.checkpoint_path / \
+            (self.__class__.__name__ + '_state.pt')
         if cp_path.exists():
             return torch.load(str(cp_path), map_location=lambda s, loc: s)
         else:
             return {}
 
     def save_training_state(self, state):
-        cp_path = self.ws.checkpoint_path / 'training_state.pt'
+        cp_path = self.ws.checkpoint_path / \
+            (self.__class__.__name__ + '_state.pt')
         torch.save(state, str(cp_path))
 
     def make_state(self, action, ob):

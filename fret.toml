@@ -1,7 +1,7 @@
 appname = "rlrs"
 
 [datasets.zhixue]
-question_text_file = "data/zhixue/ques_text.head.tsv"
+question_text_file = "data/zhixue/ques_text.tsv"
 question_knowledge_file = "data/zhixue/id_firstknow.txt"
 question_difficulty_file = "data/zhixue/id_difficulty.txt"
 word_list = "data/zhixue/words.txt"
