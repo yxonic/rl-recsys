@@ -70,7 +70,6 @@ class DQN:
 
     # to be updated
     def train_on_batch(self, batch):
-        ws = self.ws
         s, a, s_, r, mask = batch
 
         if self.learn_step_counter % TARGET_REPLACE_ITER == 0:
@@ -91,6 +90,7 @@ class DQN:
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
+        return loss.item()
 
     def save_model(self, tag):
         pass
@@ -101,7 +101,7 @@ class DQN:
     def state_dict(self):
         pass
 
-    def load_state_dict(self):
+    def load_state_dict(self, state):
         pass
 
 

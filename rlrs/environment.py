@@ -58,11 +58,7 @@ class SPEnv(gym.Env, abc.ABC):
         score = self.exercise(q)
         self._scores.append(score)
 
-        # state = one-hot of ques-knowledge where value = score
-        # q_know = [self.knowledge[k.item()] for k in q['knowledge'].max(0)[1]]
-        # q_k_v = torch.zeros(1, q_know).scatter_(dim=1, index=torch.LongTensor(q_know).view(1, -1), value=score)
-
-        observation = score
+        observation = np.asarray([score])
         reward = self.get_reward()
         done = len(self._scores) > 20  # TODO: configure stop condition
         return observation, reward, done, {}
@@ -186,7 +182,7 @@ class DeepSPEnv(SPEnv):
 
     def exercise(self, q):
         s, self.state = self.sp_model(q, None, self.state)
-        return s.mean().item()
+        return int(s.mean().item() > 0.5)
 
     def train(self, records, args):
         ws = self.ws
@@ -249,6 +245,9 @@ class DeepSPEnv(SPEnv):
                         if q_index == -1:
                             continue
                         q = self.questions[q_index]
+                        q['text'] = torch.tensor(q['text'])
+                        q['knowledge'] = torch.tensor(q['knowledge'])
+                        q['difficulty'] = torch.tensor([q['difficulty']])
                         s = s.float()
                         s_, hidden = model(q, s, hidden)
                         losses.append(F.mse_loss(s_.view(1), s).view(1))
