@@ -157,8 +157,7 @@ class GRUNet(nn.Module):
         else:
             h = hidden
 
-        # feature_x = self.generate_state_feature(action, score)
-        # feature_x = torch.FloatTensor(feature_x).view(1, 1, -1)
+        # pack_x = nn.utils.pack_padded_sequence(x)
         _, h = self.seq_net(x, h)
         action_values = self.action_net(h)
         return action_values, h
