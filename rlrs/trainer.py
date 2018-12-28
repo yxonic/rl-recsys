@@ -8,13 +8,14 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from tensorboardX import SummaryWriter
+from tqdm import tqdm
 
 from .environment import SPEnv
 from .agent import DQN
 from .util import critical, make_batch
 
 Transition = namedtuple('Transition',
-                        ('state', 'action', 'next_state', 'reward'))
+                        ('state', 'action', 'next_state', 'reward', 'done'))
 
 
 @fret.configurable
@@ -47,7 +48,7 @@ class ValueBasedTrainer:
         writer = SummaryWriter(current_run)
 
         # RL agent training process here
-        for i_episode in range(start_episode, args.n_episodes):
+        for i_episode in tqdm(range(start_episode, args.n_episodes)):
             self.env.reset()
             state = self.init_state()
 
@@ -63,13 +64,13 @@ class ValueBasedTrainer:
                     # take action in env
                     ob, reward, done, info = self.env.step(action)
 
-                    state_ = self.make_state(action, ob, done)
+                    state_ = self.make_state(action, ob)
 
                     ep_sum_reward += reward
 
                     # save records
                     self.replay_memory.push(
-                        Transition(state, action, state_, reward))
+                        Transition(state, action, state_, reward, done))
                     state = state_
 
                     if done:
@@ -96,6 +97,7 @@ class ValueBasedTrainer:
                                           'i_batch': i_batch,
                                           'replay': self.replay_memory,
                                           'agent': self.agent.state_dict()})
+                raise
 
     def load_training_state(self):
         cp_path = self.ws.checkpoint_path / 'training_state.pt'
@@ -108,9 +110,7 @@ class ValueBasedTrainer:
         cp_path = self.ws.checkpoint_path / 'training_state.pt'
         torch.save(state, str(cp_path))
 
-    def make_state(self, action, ob, done):
-        if done:
-            return None
+    def make_state(self, action, ob):
         q = self.env.questions[action]
         kd = (q['knowledge'] * q['difficulty']).reshape(1, -1)
         i = np.concatenate([kd * (ob >= 0.5), kd * (ob < 0.5)], axis=1)
@@ -125,14 +125,9 @@ class ValueBasedTrainer:
         # TODO: make batched sequential inputs for agent network
         states = [torch.tensor(i.state).float() for i in samples]
         actions = [torch.tensor(i.action).long().view(1, 1) for i in samples]
-        states_ = [torch.tensor(self.init_state()).float()
-                   if i.next_state is None
-                   else torch.tensor(i.next_state).float()
-                   for i in samples]
-        rewards = [torch.tensor(i.reward).view(1, 1).float() for i in samples]
-        masks = [torch.tensor(0).view(1, 1) if s.next_state is None
-                 else torch.tensor(1).view(1, 1)
-                 for s in samples]
+        states_ = [torch.tensor(i.next_state).float() for i in samples]
+        rewards = [torch.tensor([i.reward]).float() for i in samples]
+        masks = [torch.tensor([i.done]).float() for i in samples]
         states, actions, states_, rewards, masks = \
             make_batch(states, actions, states_, rewards, masks, seq=[0, 2])
 
