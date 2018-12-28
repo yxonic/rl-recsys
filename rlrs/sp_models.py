@@ -27,6 +27,7 @@ class EERNN(nn.Module):
         self.attn_k = attn_k
 
         self.question_net = QuesNet(wcnt, emb_size, ques_h_size, n_layers)
+        self.question_net.load_emb(self.embs)
 
         self.seq_net = EERNNSeqNet(ques_h_size, seq_h_size, n_layers, attn_k)
 
@@ -74,6 +75,7 @@ class QuesNet(nn.Module):
 
     def load_emb(self, emb):
         self.embedding_net.weight.data.copy_(torch.from_numpy(emb))
+        self.embedding_net.weight.requires_grad = False
 
 
 class EERNNSeqNet(nn.Module):
