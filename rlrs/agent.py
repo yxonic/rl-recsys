@@ -6,6 +6,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from torch.nn.utils.rnn import pad_packed_sequence
+
 from .sp_models import QuesNet
 from .dataprep import Questions
 
@@ -30,7 +32,9 @@ class DQN:
         self.greedy_epsilon = greedy_epsilon
         self.gama = gama
 
-        self.n_knowledges = fret.app['datasets'][dataset]['n_knowledges']
+        n_know = len(open(fret.app['datasets'][dataset]['knowledge_list'])
+                     .read().strip().split('\n'))
+        self.state_size = n_know * 2
         self.n_actions = fret.app['datasets'][dataset]['n_actions']
 
         # self.memory_counter = 0
@@ -38,8 +42,8 @@ class DQN:
         # self.memory = np.zeros((memory_capacity, 4)) # store state, action, reward, state_
 
         # build DQN network
-        self.current_net = SimpleNet(self.n_knowledges, self.n_actions)
-        self.target_net = SimpleNet(self.n_knowledges, self.n_actions)
+        self.current_net = SimpleNet(self.state_size, self.n_actions)
+        self.target_net = SimpleNet(self.state_size, self.n_actions)
         self.optimizer = torch.optim.Adam(self.current_net.parameters(), lr=learning_rate)
         self.loss_func = nn.MSELoss()
 
@@ -73,17 +77,12 @@ class DQN:
         s, a, s_, r, mask = batch
 
         if self.learn_step_counter % TARGET_REPLACE_ITER == 0:
-            self.target_net.load_state_dict(self.eval_net.state_dict())
+            self.target_net.load_state_dict(self.current_net.state_dict())
         self.learn_step_counter += 1
 
-        s = torch.FloatTensor(s)
-        a = torch.LongTensor(a).astype(int)
-        s_ = torch.FloatTensor(s_)
-        r = torch.FloatTensor(r)
-
-        q_current = self.current_net(s).gather(1, a)
-        q_next = self.target_net(a, s_).detach()
-        q_target = r + self.gama * q_next.max(1)[0]
+        q_current = self.current_net(s).squeeze(1).gather(1, a)
+        q_next = self.target_net(s_).squeeze(1).gather(1, a).detach()
+        q_target = r + self.gama * q_next.max(1, keepdim=True)[0]
 
         loss = self.loss_func(q_current, q_target)
 
@@ -109,20 +108,21 @@ class DQN:
 # to be updated: input question or question_emb ?
 class SimpleNet(nn.Module):
     def __init__(self,
-                 n_knowledges=50,
+                 state_size=50,
                  n_actions=100):
         super(SimpleNet, self).__init__()
 
         self.n_actions = n_actions
-        self.state_size = n_knowledges
+        self.state_size = state_size
         # self.h_size = h_size
 
-        self.input_net = nn.Linear(self.state_size * 2, 200)
+        self.input_net = nn.Linear(self.state_size, 200)
         self.out_net = nn.Linear(200, self.n_actions)
         # self.input_net.weight.data.normal_(0, 0.1)
         # self.out_net.weight.data.normal_(0, 0.1)
 
     def forward(self, x):
+        x, lens = pad_packed_sequence(x)
         x, _ = torch.max(x, 0)
         x = F.relu(self.input_net(x))
         action_values = self.out_net(x)
@@ -177,15 +177,7 @@ class ReplayMemory(object):
 
     def push(self, trans):
         """Saves a transition."""
-        if len(self.memory) < self.capacity:
-            self.memory.append(None)
-        '''
-        self.memory[self.position] = trans
-        self.position = (self.position + 1) % self.capacity
-        '''
-        position = self.counter % self.capacity
-        self.memory[position] = trans
-        self.counter += 1
+        self.memory.append(trans)
 
     def sample(self, batch_size):
         return random.sample(self.memory, batch_size)

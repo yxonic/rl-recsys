@@ -30,8 +30,8 @@ class ValueBasedTrainer:
         logger = self.ws.logger('ValueBasedTrainer.train')
         logger.debug('func: <trainer.train>, args: %s', args)
 
-        if args.resume:
-            state = self.load_training_state()
+        state = self.load_training_state()
+        if args.resume and state:
             current_run = state['run']
             start_episode = state['i_episode']
             i_batch = state['i_batch']
@@ -70,11 +70,18 @@ class ValueBasedTrainer:
                     # save records
                     self.replay_memory.push(
                         Transition(state, action, state_, reward))
+                    state = state_
+
+                    if done:
+                        writer.add_scalar('ValueBasedTrainer.train/return',
+                                          ep_sum_reward, i_episode)
+                        break
 
                     # update parameters in agent
                     # sample from replay memory
                     if len(self.replay_memory) < args.batch_size:
                         continue
+
                     samples = self.replay_memory.sample(args.batch_size)
                     batch = self.make_batch(samples)
 
@@ -82,12 +89,6 @@ class ValueBasedTrainer:
                     loss = self.agent.train_on_batch(batch)
                     writer.add_scalar('ValueBasedTrainer.train/loss',
                                       loss, i_batch)
-
-                    if done:
-                        writer.add_scalar('ValueBasedTrainer.train/return',
-                                          ep_sum_reward, i_episode)
-                        break
-                    state = state_
 
             except KeyboardInterrupt:
                 self.save_training_state({'run': current_run,
@@ -111,7 +112,7 @@ class ValueBasedTrainer:
         if done:
             return None
         q = self.env.questions[action]
-        kd = (q['knowledge'] * q['difficulty']).view(1, -1)
+        kd = (q['knowledge'] * q['difficulty']).reshape(1, -1)
         i = np.concatenate([kd * (ob >= 0.5), kd * (ob < 0.5)], axis=1)
         self._inputs.append(i)
         return np.expand_dims(np.concatenate(self._inputs, axis=0), 1)
@@ -122,12 +123,16 @@ class ValueBasedTrainer:
 
     def make_batch(self, samples):
         # TODO: make batched sequential inputs for agent network
-        states = [torch.tensor(i.state) for i in samples]
-        actions = [torch.tensor(i.action).view(1, 1) for i in samples]
-        states_ = [self.init_state() if i.next_state is None else i.next_state
+        states = [torch.tensor(i.state).float() for i in samples]
+        actions = [torch.tensor(i.action).long().view(1, 1) for i in samples]
+        states_ = [torch.tensor(self.init_state()).float()
+                   if i.next_state is None
+                   else torch.tensor(i.next_state).float()
                    for i in samples]
-        rewards = [torch.tensor(i.reward).view(1, 1) for i in samples]
-        masks = [0 if s.next_state is None else 1 for s in samples]
+        rewards = [torch.tensor(i.reward).view(1, 1).float() for i in samples]
+        masks = [torch.tensor(0).view(1, 1) if s.next_state is None
+                 else torch.tensor(1).view(1, 1)
+                 for s in samples]
         states, actions, states_, rewards, masks = \
             make_batch(states, actions, states_, rewards, masks, seq=[0, 2])
 

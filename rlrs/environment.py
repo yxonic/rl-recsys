@@ -77,7 +77,7 @@ class SPEnv(gym.Env, abc.ABC):
 
         question_diff = question['difficulty']
         question_know = [self.knowledge[k.item()]
-                         for k in question['knowledge'].max(0)[1]]
+                         for k in question['knowledge'].argmax(0)]
 
         # calculate reward in current state
         length = len(self._history)
@@ -88,7 +88,7 @@ class SPEnv(gym.Env, abc.ABC):
             past_know_list = []
             for _q in self._history:
                 _q_know = [self.knowledge[k.item()]
-                           for k in self.questions[_q]['knowledge'].max(0)[1]]
+                           for k in self.questions[_q]['knowledge'].argmax(0)]
                 past_know_list = past_know_list + _q_know
             past_know_list = set(past_know_list)
             if set(question_know).issubset(past_know_list):
@@ -181,6 +181,9 @@ class DeepSPEnv(SPEnv):
             _, self.state = self.sp_model(q, s, None)
 
     def exercise(self, q):
+        q['text'] = torch.tensor(q['text'])
+        q['knowledge'] = torch.tensor(q['knowledge'])
+        q['difficulty'] = torch.tensor([q['difficulty']])
         s, self.state = self.sp_model(q, None, self.state)
         return int(s.mean().item() > 0.5)
 
