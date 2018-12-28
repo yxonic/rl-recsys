@@ -24,6 +24,7 @@ class ValueBasedTrainer:
         self.agent = agent
         self.replay_memory = agent.make_replay_memory(memory_capacity)
         self._inputs = []
+        self._inputs_len = []
 
     def train(self, args):
         logger = self.ws.logger('ValueBasedTrainer.train')
@@ -101,11 +102,13 @@ class ValueBasedTrainer:
         i = torch.cat([kd * (ob >= 0.5).type_as(kd).expand_as(kd),
                        kd * (ob < 0.5).type_as(kd).expand_as(kd)])
         self._inputs.append(i)
+        self._inputs_len.append(len(self._inputs))
         return torch.cat(self._inputs, dim=0).unsqueeze(1)
 
     def init_state(self):
         # self._inputs = [torch.zeros(1, self.env.n_knowledge + 1)]
         self._inputs = [torch.zeros(1, self.env.n_knowledge * 2)]
+        self._inputs_len.append(len(self._inputs))
         return self._inputs[-1].unsqueeze(1)
 
     def make_batch(self, samples):
