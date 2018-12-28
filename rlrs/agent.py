@@ -22,7 +22,7 @@ class DQN:
     def __init__(self,
                  memory_capacity=(2000, 'max saved memory states'),
                  learning_rate=(0.001, 'learning rate'),
-                 greedy_epsilon=(0.0, 'greedy policy'),
+                 greedy_epsilon=(0.9, 'greedy policy'),
                  gama=(0.9, 'reward discount rate'),
                  double_q=False,
                  dataset=fret.ref('env.dataset')

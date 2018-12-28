@@ -39,9 +39,9 @@ class ValueBasedTrainer:
             self.replay_memory = state['replay']
             self.agent.load_state_dict(state['agent'])
         else:
-            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            now = datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
             current_run = str(self.ws.log_path /
-                              ('ValueBasedTrainer.train-%s/' % now))
+                              ('ValueBasedTrainer.train/run-%s/' % now))
             start_episode = 0
             i_batch = 0
             self.agent.init_training()
