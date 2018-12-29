@@ -44,6 +44,9 @@ class _SPEnv(gym.Env, abc.ABC):
         self.observation_space = spaces.Box(low=0, high=1, shape=(1,),
                                             dtype=np.float32)
 
+    def random_action(self):
+        return self.action_space.sample()
+
     def reset(self):
         # new session
         self._history = []

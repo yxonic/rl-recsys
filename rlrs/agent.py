@@ -87,7 +87,7 @@ class DQN:
                                               _n_heads=1,
                                               _with_state_value=False)
         self.target_net = copy.deepcopy(self.current_net)
-        self.loss_func = nn.MSELoss()
+        self.loss_func = nn.SmoothL1Loss()
         self.optimizer = torch.optim.Adam(self.current_net.parameters(),
                                           lr=learning_rate)
 
@@ -110,7 +110,7 @@ class DQN:
         self.learn_step_counter += 1
 
         q_current = self.current_net(s)[0].squeeze(1).gather(1, a).view(-1)
-        q_next = self.target_net(s_)[0].squeeze(1).gather(1, a).detach()
+        q_next = self.target_net(s_)[0].squeeze(1).detach()
         q_target = r + self.gama * q_next.max(1)[0]
 
         loss = self.loss_func(q_current, q_target)

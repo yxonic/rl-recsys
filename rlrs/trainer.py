@@ -1,12 +1,10 @@
 import datetime
+import random
 from collections import namedtuple
 
 import fret
 import numpy as np
-import random
 import torch
-import torch.nn as nn
-import torch.optim as optim
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
@@ -63,11 +61,17 @@ class ValueBasedTrainer:
                     i_batch += 1
 
                     # select action
-                    action = self.agent.select_action(
-                        torch.tensor(state).float())
+                    if i_episode < 200 or (i_episode < 1000 and
+                                           random.random() < 0.5) \
+                            or random.random() < 0.1:
+                        action = self.env.random_action()
+                    else:
+                        action = self.agent.select_action(
+                            torch.tensor(state).float())
 
                     # take action in env
                     ob, reward, done, info = self.env.step(action)
+                    reward /= 100
 
                     state_ = self.make_state(action, ob)
 
