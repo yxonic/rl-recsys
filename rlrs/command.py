@@ -25,7 +25,6 @@ def train_agent(ws, checkpoint=None, n_episodes=50, batch_size=16,
 
     logger.info('building trainer and loading questions')
     trainer = ws.build_module()
-
     if checkpoint:
         trainer.env.load_model(checkpoint)
 

@@ -75,8 +75,8 @@ class DQN:
                  greedy_epsilon=(0.9, 'greedy policy'),
                  gama=(0.9, 'reward discount rate'),
                  learning_rate=(0.1, 'learning rate'),
-                 target_replace_every=100,
-                 double_q=False):
+                 target_replace_every=50,
+                 double_q=True):
         self.learn_step_counter = 0
         self.greedy_epsilon = greedy_epsilon
         self.gama = gama
@@ -88,7 +88,8 @@ class DQN:
                                               _with_state_value=False)
         self.target_net = copy.deepcopy(self.current_net)
         self.loss_func = nn.MSELoss()
-        self.optimizer = torch.optim.Adam(self.current_net.parameters())
+        self.optimizer = torch.optim.Adam(self.current_net.parameters(),
+                                          lr=learning_rate)
 
     @staticmethod
     def make_replay_memory(size):
@@ -136,11 +137,9 @@ class ReplayMemory(object):
     def __init__(self, capacity):
         self.capacity = capacity
         self.memory = deque(maxlen=capacity)
-        # self.position = 0
         self.counter = 0
 
     def push(self, trans):
-        """Saves a transition."""
         self.memory.append(trans)
 
     def sample(self, batch_size):

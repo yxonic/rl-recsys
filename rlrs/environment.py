@@ -173,20 +173,22 @@ class DeepSPEnv(_SPEnv):
     def __init__(self, sp_model, **cfg):
         super(DeepSPEnv, self).__init__(**cfg)
         self.sp_model = sp_model(_dataset=self.dataset, _wcnt=self.n_words)
-        self.state = None
 
     def sample_student(self):
+        self.state = None
         # sample some records
         records = []
         # feed into self.sp_model to get state
-        for q, s in records:
-            _, self.state = self.sp_model(q, s, None)
+        with torch.no_grad():
+            for q, s in records:
+                _, self.state = self.sp_model(q, s, self.state)
 
     def exercise(self, q):
         q['text'] = torch.tensor(q['text'])
         q['knowledge'] = torch.tensor(q['knowledge'])
         q['difficulty'] = torch.tensor([q['difficulty']])
-        s, self.state = self.sp_model(q, None, self.state)
+        with torch.no_grad():
+            s, self.state = self.sp_model(q, None, self.state)
         return int(s.mean().item() > 0.5)
 
     def train(self, records, args):
