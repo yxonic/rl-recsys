@@ -95,9 +95,9 @@ class Questions:
         else:
             qid = index
         if qid in self._ques_set:
-            know = np.zeros((1, self.n_knowledge))
+            know = np.zeros((self.n_knowledge,))
             for k in self._ques_know[qid]:
-                know[0, k] = 1
+                know[k] = 1
 
             return {
                 'id': qid,
@@ -132,7 +132,7 @@ def load_embedding(emb_file):
         embs.append(emb)
 
     embs = np.asarray(embs)
-    return wcnt, emb_size, words, embs
+    return embs
 
 
 class QidField:

@@ -17,18 +17,20 @@ from .util import critical
 
 
 @fret.configurable
-class SPEnv(gym.Env, abc.ABC):
+class _SPEnv(gym.Env, abc.ABC):
     """Simulated environment based on some kind of Score Prediction."""
 
     def __init__(self,
                  dataset=('zhixue', 'student record dataset',
                           ['zhixue', 'poj', 'ustcoj']),
                  expected_avg=(0.5, 'expected average score')):
+        super(_SPEnv, self).__init__()
         self.dataset = dataset
         self.questions = Questions(dataset)
         self.knowledge = self.questions.knowledge
         self.n_questions = self.questions.n_questions
         self.n_knowledge = self.questions.n_knowledge
+        self.n_words = self.questions.n_words
 
         self.expected_avg = expected_avg
 
@@ -41,8 +43,6 @@ class SPEnv(gym.Env, abc.ABC):
         # agent should keep track of the history separately
         self.observation_space = spaces.Box(low=0, high=1, shape=(1,),
                                             dtype=np.float32)
-
-        self.reset()
 
     def reset(self):
         # new session
@@ -76,8 +76,8 @@ class SPEnv(gym.Env, abc.ABC):
         predict_score = self._scores[-1]
 
         question_diff = question['difficulty']
-        question_know = [self.knowledge[k.item()]
-                         for k in question['knowledge'].argmax(0)]
+        question_know = [self.knowledge[i]
+                         for i, x in enumerate(question['knowledge']) if x > 0]
 
         # calculate reward in current state
         length = len(self._history)
@@ -87,8 +87,9 @@ class SPEnv(gym.Env, abc.ABC):
             # coverage reward: R = -1 if current know exists in past know lists
             past_know_list = []
             for _q in self._history:
-                _q_know = [self.knowledge[k.item()]
-                           for k in self.questions[_q]['knowledge'].argmax(0)]
+                _q_know = [self.knowledge[i]
+                           for i, x in enumerate(question['knowledge'])
+                           if x > 0]
                 past_know_list = past_know_list + _q_know
             past_know_list = set(past_know_list)
             if set(question_know).issubset(past_know_list):
@@ -139,14 +140,14 @@ class SPEnv(gym.Env, abc.ABC):
 
 
 @fret.configurable
-class RandomEnv(SPEnv):
+class RandomEnv(_SPEnv):
     def __init__(self, **cfg):
-        self.know_state = None
         super(RandomEnv, self).__init__(**cfg)
+        self._know_state = None
 
     def sample_student(self):
         """Reset environment state. Here we sample a new student."""
-        self.know_state = np.random.rand(self.n_knowledge,)
+        self._know_state = np.random.rand(self.n_knowledge,)
 
     def exercise(self, q):
         """Receive an action, returns observation, reward of current step,
@@ -156,7 +157,8 @@ class RandomEnv(SPEnv):
         know = q['knowledge']
 
         # set score to 1 if a student masters all knowledge of this question
-        if all(self._know_state[i] > diff for i in know):
+        if all(self._know_state[i] > diff
+               for i, x in enumerate(know) if x > 0.5):
             score = 1.
         else:
             score = 0.
@@ -167,11 +169,11 @@ class RandomEnv(SPEnv):
 
 
 @fret.configurable
-class DeepSPEnv(SPEnv):
+class DeepSPEnv(_SPEnv):
     def __init__(self, sp_model, **cfg):
-        self.sp_model = sp_model
-        self.state = None
         super(DeepSPEnv, self).__init__(**cfg)
+        self.sp_model = sp_model(_dataset=self.dataset, _wcnt=self.n_words)
+        self.state = None
 
     def sample_student(self):
         # sample some records

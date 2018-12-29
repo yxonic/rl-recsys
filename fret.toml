@@ -7,7 +7,6 @@ question_difficulty_file = "data/zhixue/id_difficulty.txt"
 word_list = "data/zhixue/words.txt"
 knowledge_list = "data/zhixue/firstknow_list.txt"
 record_file = "data/zhixue/records.tsv"
-n_actions = 10
 
 [datasets.ustcoj]
 question_text_file = "data/ustcoj/ques_text.tsv"
@@ -16,7 +15,6 @@ question_difficulty_file = "data/ustcoj/ques_difficulty.tsv"
 word_list = "data/ustcoj/words.txt"
 knowledge_list = "data/ustcoj/know_list.txt"
 record_file = "data/ustcoj/records.tsv"
-n_actions = 10
 
 [datasets.poj]
 question_text_file = "data/poj/ques_text.tsv"
@@ -25,4 +23,3 @@ question_difficulty_file = "data/poj/ques_difficulty.tsv"
 word_list = "data/poj/words.txt"
 knowledge_list = "data/poj/know_list.txt"
 record_file = "data/poj/records.tsv"
-n_actions = 10

@@ -10,7 +10,7 @@ import torch.optim as optim
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
-from .environment import SPEnv
+from .environment import _SPEnv
 from .agent import DQN
 from .util import critical, make_batch
 
@@ -20,11 +20,12 @@ Transition = namedtuple('Transition',
 
 @fret.configurable
 class ValueBasedTrainer:
-    def __init__(self, env: SPEnv, agent: DQN,
+    def __init__(self, env, agent,
                  memory_capacity=(500, 'replay memory size')):
-        self.env = env
-        self.agent = agent
-        self.replay_memory = agent.make_replay_memory(memory_capacity)
+        self.env: _SPEnv = env()
+        self.agent: DQN = agent(_state_size=self.env.n_knowledge + 2,
+                                _n_actions=self.env.n_questions)
+        self.replay_memory = self.agent.make_replay_memory(memory_capacity)
         self._inputs = []
 
     def train(self, args):
@@ -49,7 +50,9 @@ class ValueBasedTrainer:
         writer = SummaryWriter(current_run)
 
         # RL agent training process here
-        for i_episode in tqdm(range(start_episode, args.n_episodes)):
+        for i_episode in tqdm(range(start_episode, args.n_episodes),
+                              initial=start_episode,
+                              total=args.n_episodes):
             try:
                 self.env.reset()
                 state = self.init_state()
@@ -60,7 +63,8 @@ class ValueBasedTrainer:
                     i_batch += 1
 
                     # select action
-                    action = self.agent.select_action(state)
+                    action = self.agent.select_action(
+                        torch.tensor(state).float())
 
                     # take action in env
                     ob, reward, done, info = self.env.step(action)
@@ -100,6 +104,12 @@ class ValueBasedTrainer:
                                           'agent': self.agent.state_dict()})
                 raise
 
+        self.save_training_state({'run': current_run,
+                                  'i_episode': args.n_episodes,
+                                  'i_batch': i_batch,
+                                  'replay': self.replay_memory,
+                                  'agent': self.agent.state_dict()})
+
     def load_training_state(self):
         cp_path = self.ws.checkpoint_path / \
             (self.__class__.__name__ + '_state.pt')
@@ -115,13 +125,15 @@ class ValueBasedTrainer:
 
     def make_state(self, action, ob):
         q = self.env.questions[action]
-        kd = (q['knowledge'] * q['difficulty']).reshape(1, -1)
-        i = np.concatenate([kd * (ob >= 0.5), kd * (ob < 0.5)], axis=1)
+        i = np.concatenate([q['knowledge'].reshape(1, -1),
+                            np.array([q['difficulty']]).reshape(1, 1),
+                            ob.reshape(1, 1)],
+                           axis=1)
         self._inputs.append(i)
         return np.expand_dims(np.concatenate(self._inputs, axis=0), 1)
 
     def init_state(self):
-        self._inputs = [np.zeros((1, self.env.n_knowledge * 2))]
+        self._inputs = [np.zeros((1, self.env.n_knowledge + 2))]
         return np.expand_dims(self._inputs[-1], 1)
 
     def make_batch(self, samples):

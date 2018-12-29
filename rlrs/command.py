@@ -1,5 +1,5 @@
 import fret
-from .environment import SPEnv
+from .environment import _SPEnv
 from .dataprep import load_record
 
 
@@ -8,7 +8,7 @@ from .dataprep import load_record
 def train_env(ws, n_epochs=3, log_every=32, save_every=2500, resume=True):
     logger = ws.logger('train_env')
     logger.info('building env and loading questions')
-    env: SPEnv = ws.build_module('env')
+    env: _SPEnv = ws.build_module('env')
     logger.info("[%s] %s, %s", ws, env, train_env.args)
 
     rec_file = fret.app['datasets'][env.dataset]['record_file']
@@ -19,13 +19,16 @@ def train_env(ws, n_epochs=3, log_every=32, save_every=2500, resume=True):
 
 # noinspection PyUnusedLocal
 @fret.command
-def train_agent(ws, checkpoint='1', n_episodes=50, batch_size=16,
+def train_agent(ws, checkpoint=None, n_episodes=50, batch_size=16,
                 resume=True):
     logger = ws.logger('train')
 
-    logger.info('building env and loading questions')
+    logger.info('building trainer and loading questions')
     trainer = ws.build_module()
-    trainer.env.load_model(checkpoint)
+
+    if checkpoint:
+        trainer.env.load_model(checkpoint)
+
     logger.info("[%s] %s", ws, trainer)
 
     trainer.train(train_agent.args)
