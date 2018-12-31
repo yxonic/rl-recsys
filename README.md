@@ -33,6 +33,6 @@ tensorboard --logdir ws
 ```
 
 ## TODOs
--[ ] Load datasets: questions, words, knowledge, records
--[ ] `DeepSPEnv.train`: train deep score prediction models on records
--[ ] Command `train_agent`
+- [ ] Load datasets: questions, words, knowledge, records
+- [ ] `DeepSPEnv.train`: train deep score prediction models on records
+- [ ] Command `train_agent`
