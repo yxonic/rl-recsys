@@ -33,6 +33,9 @@ tensorboard --logdir ws
 ```
 
 ## TODOs
-- [ ] Load datasets: questions, words, knowledge, records
-- [ ] `DeepSPEnv.train`: train deep score prediction models on records
-- [ ] Command `train_agent`
+- [x] Load datasets: questions, words, knowledge, records
+- [x] `DeepSPEnv.train`: train deep score prediction models on records
+- [ ] Sample students
+- [x] Command `train_agent`
+- [ ] Policy Gradient and Actor Critic methods
+- [ ] Reward function
