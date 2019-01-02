@@ -12,12 +12,13 @@ pip install -r requirements.txt
 mkdir -p ws/dqn-eernn-exp1
 cd ws/dqn-eernn-exp1
 fret config env DeepSPEnv -dataset zhixue
-fret config sp_model EERNN -emb_file data/zhixue/emb_50.txt
+fret config sp_model EERNN
 fret config         # check current configuration
 fret train_env      # calls SPEnv.train
 
-fret config Trainer
+fret config ValueBasedTrainer
 fret config agent DQN
+fret config policy SimpleNet
 fret train_agent    # calls Trainer.train
 ```
 
@@ -32,6 +33,9 @@ tensorboard --logdir ws
 ```
 
 ## TODOs
--[ ] Load datasets: questions, words, knowledge, records
--[ ] `DeepSPEnv.train`: train deep score prediction models on records
--[ ] Command `train_agent`
+- [x] Load datasets: questions, words, knowledge, records
+- [x] `DeepSPEnv.train`: train deep score prediction models on records
+- [ ] Sample students
+- [x] Command `train_agent`
+- [ ] Policy Gradient and Actor Critic methods
+- [ ] Reward function

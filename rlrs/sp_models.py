@@ -8,26 +8,25 @@ from .dataprep import load_embedding, Questions
 
 @fret.configurable
 class EERNN(nn.Module):
-    def __init__(self,
-                 dataset=fret.ref('env.dataset'),
+    def __init__(self, _dataset, _wcnt,
+                 emb_size=(50, 'embedding size'),
                  ques_h_size=(50, 'question embedding set'),
                  seq_h_size=(50, 'hidden size of sequence model'),
                  n_layers=(1, 'number of layers of RNN'),
                  attn_k=(10, 'top k records for attention in EERNN model')):
         super(EERNN, self).__init__()
-        emb_file = 'data/%s/emb_50.txt' % dataset
-        wcnt, emb_size, words, embs = load_embedding(emb_file)
-        self.wcnt = wcnt
+        self.wcnt = _wcnt
         self.emb_size = emb_size
-        self.words = words
-        self.embs = embs
         self.ques_h_size = ques_h_size
         self.seq_h_size = seq_h_size
         self.n_layers = n_layers
         self.attn_k = attn_k
 
-        self.question_net = QuesNet(wcnt, emb_size, ques_h_size, n_layers)
-        self.question_net.load_emb(self.embs)
+        self.question_net = QuesNet(_wcnt, emb_size, ques_h_size, n_layers)
+        if _dataset:
+            emb_file = 'data/%s/emb_%d.txt' % (_dataset, emb_size)
+            embs = load_embedding(emb_file)
+            self.question_net.load_emb(embs)
 
         self.seq_net = EERNNSeqNet(ques_h_size, seq_h_size, n_layers, attn_k)
 
