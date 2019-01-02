@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .dataprep import load_embedding
+from .dataprep import load_embedding, Questions
 
 
 @fret.configurable
@@ -53,6 +53,25 @@ class EERNN(nn.Module):
         return s, hidden
 
 
+class DKT(nn.Module):
+    def __init__(self,
+                 args,
+                 dataset=fret.ref('env.dataset')):
+        super(DKT, self).__init__()
+        self.dataset = dataset
+        self.questions = Questions(dataset)
+        self.n_knowledge = self.questions.n_knowledge
+
+        self.seq_net = DKTNet(self.n_knowledge)
+
+    def forward(self, knowledge_vec, score, hidden=None):
+        s, hidden = self.seq_net(knowledge_vec, score, hidden)
+        return s, hidden
+
+
+'''
+模型各种模块
+'''
 class QuesNet(nn.Module):
     def __init__(self, wcnt, emb_size=100, ques_size=50, n_layers=1):
         super(QuesNet, self).__init__()
@@ -126,3 +145,30 @@ class EERNNSeqNet(nn.Module):
 
         _, h_ = self.seq_net(x.view(1, 1, -1), h)
         return pred, h_
+
+
+class DKTNet(nn.Module):
+    """
+    做题记录序列的RNN（GRU）单元
+    """
+    def __init__(self, n_knowledge):
+        super(DKTNet, self).__init__()
+        self.n_knwoledge = n_knowledge
+        self.rnn_net = nn.GRU(n_knowledge * 2, n_knowledge, 1)
+        self.score_net = nn.Linear(n_knowledge * 2, 1)
+
+    def forward(self, knowledge_v, score, h):
+        if h is None:
+            h = self.default_hidden()
+
+        knowledge_v = knowledge_v.type_as(h)
+        score = self.score_net(torch.cat([h.view(-1), knowledge_v.view(-1)]))
+
+        x = torch.cat([knowledge_v.view(-1),
+                       (knowledge_v * (score > 0.5).type_as(knowledge_v).
+                        expand_as(knowledge_v).type_as(knowledge_v)).view(-1)])
+        _, h = self.rnn_net(x.view(1, 1, -1), h)
+        return score.view(1), h
+
+    def default_hidden(self):
+        return torch.zeros(1, 1, self.topic_size)
