@@ -1,5 +1,13 @@
 appname = "rlrs"
 
+[datasets.example]
+question_text_file = "examples/ques_text.txt"
+question_knowledge_file = "examples/id_know.txt"
+question_difficulty_file = "examples/id_difficulty.txt"
+word_list = "examples/words.txt"
+knowledge_list = "examples/know_list.txt"
+record_file = "examples/records.txt"
+
 [datasets.zhixue]
 question_text_file = "data/zhixue/ques_text.tsv"
 question_knowledge_file = "data/zhixue/id_firstknow.txt"
