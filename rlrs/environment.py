@@ -1,5 +1,6 @@
 import abc
 import datetime
+import random
 from itertools import islice
 
 import fret
@@ -17,26 +18,26 @@ from .util import critical
 
 
 @fret.configurable
-class _SPEnv(gym.Env, abc.ABC):
+class _StuEnv(gym.Env, abc.ABC):
     """Simulated environment based on some kind of Score Prediction."""
 
     def __init__(self,
-                 dataset=('zhixue', 'student record dataset',
-                          ['zhixue', 'poj', 'ustcoj']),
+                 dataset=('example', 'student record dataset',
+                          ['example', 'zhixue', 'poj', 'ustcoj']),
                  expected_avg=(0.5, 'expected average score')):
-        super(_SPEnv, self).__init__()
+        super(_StuEnv, self).__init__()
         self.dataset = dataset
         self.questions = Questions(dataset)
         self.knowledge = self.questions.knowledge
         self.n_questions = self.questions.n_questions
         self.n_knowledge = self.questions.n_knowledge
         self.n_words = self.questions.n_words
-
+        self.records = []
         self.expected_avg = expected_avg
 
         # session history
         self._history = []
-        self._scores = []
+        self.scores = []
 
         self.action_space = spaces.Discrete(self.n_questions)
         # only provide current step observation: score
@@ -44,13 +45,15 @@ class _SPEnv(gym.Env, abc.ABC):
         self.observation_space = spaces.Box(low=0, high=1, shape=(1,),
                                             dtype=np.float32)
 
+        self._stop = False
+
     def random_action(self):
         return self.action_space.sample()
 
     def reset(self):
         # new session
         self._history = []
-        self._scores = []
+        self.scores = []
         self.sample_student()
 
     def step(self, action):
@@ -59,12 +62,16 @@ class _SPEnv(gym.Env, abc.ABC):
 
         # generate predicted score
         score = self.exercise(q)
-        self._scores.append(score)
+        self.scores.append(score)
 
         observation = np.asarray([score])
         reward = self.get_reward()
-        done = len(self._scores) > 20  # TODO: configure stop condition
-        return observation, reward, done, {}
+        if len(self.scores) > 20:
+            self.stop()
+        return observation, reward, self._stop, {}
+
+    def stop(self):
+        self._stop = True
 
     def render(self, mode='human'):
         pass
@@ -76,7 +83,7 @@ class _SPEnv(gym.Env, abc.ABC):
         # R_coverage, R_change, R_difficulty, R_expected
 
         question = self.questions[self._history[-1]]
-        predict_score = self._scores[-1]
+        predict_score = self.scores[-1]
 
         question_diff = question['difficulty']
         question_know = [self.knowledge[i]
@@ -116,7 +123,7 @@ class _SPEnv(gym.Env, abc.ABC):
             # expected reward
             step = 5
             if length < step:
-                _qs = self._scores[1:]
+                _qs = self.scores[1:]
             else:
                 _qs = self._history[-step:]
 
@@ -129,6 +136,9 @@ class _SPEnv(gym.Env, abc.ABC):
 
         return reward
 
+    def set_records(self, records):
+        self.records = records
+
     @abc.abstractmethod
     def sample_student(self):
         raise NotImplementedError
@@ -137,13 +147,9 @@ class _SPEnv(gym.Env, abc.ABC):
     def exercise(self, q):
         raise NotImplementedError
 
-    @abc.abstractmethod
-    def train(self, records, args):
-        raise NotImplementedError
-
 
 @fret.configurable
-class RandomEnv(_SPEnv):
+class RandomEnv(_StuEnv):
     def __init__(self, **cfg):
         super(RandomEnv, self).__init__(**cfg)
         self._know_state = None
@@ -167,12 +173,40 @@ class RandomEnv(_SPEnv):
             score = 0.
         return score
 
-    def train(self, records, args):
-        pass
+
+@fret.configurable
+class OffPolicyEnv(_StuEnv):
+    def __init__(self, **cfg):
+        super(OffPolicyEnv, self).__init__(**cfg)
+        self.record = None
+        self.qids = None
+        self._scores = None
+        self._pos = 0
+
+    def random_action(self):
+        a = self.questions.stoi[self.qids[self._pos]]
+        self._pos += 1
+        return a
+
+    def sample_student(self):
+        """Reset environment state. Here we sample a new student."""
+        assert len(self.records) > 0, 'no record found'
+        r = self.record = random.choice(self.records)
+        self._scores = {q: s for q, s in zip(r.question, r.score)}
+        self.qids = r.question
+        self._pos = 0
+
+    def exercise(self, q):
+        """Receive an action, returns observation, reward of current step,
+        whether the game is done, and some other information."""
+        if self._pos >= len(self.qids):
+            self.stop()
+
+        return self._scores[q['id']]
 
 
 @fret.configurable
-class DeepSPEnv(_SPEnv):
+class DeepSPEnv(_StuEnv):
     def __init__(self, sp_model, **cfg):
         super(DeepSPEnv, self).__init__(**cfg)
         self.sp_model = sp_model(_dataset=self.dataset, _wcnt=self.n_words)
@@ -180,7 +214,7 @@ class DeepSPEnv(_SPEnv):
     def sample_student(self):
         self.state = None
         # sample some records
-        records = []
+        records = random.sample(self.records) if self.records else []
         # feed into self.sp_model to get state
         with torch.no_grad():
             for q, s in records:
@@ -194,8 +228,9 @@ class DeepSPEnv(_SPEnv):
             s, self.state = self.sp_model(q, None, self.state)
         return int(s.mean().item() > 0.5)
 
-    def train(self, records, args):
+    def train(self, args):
         ws = self.ws
+        records = self.records
         logger = ws.logger('DeepSPEnv.train')
 
         model = self.sp_model

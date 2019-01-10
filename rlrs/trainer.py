@@ -8,7 +8,7 @@ import torch
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
-from .environment import _SPEnv
+from .environment import _StuEnv
 from .agent import DQN
 from .util import critical, make_batch
 
@@ -20,7 +20,7 @@ Transition = namedtuple('Transition',
 class ValueBasedTrainer:
     def __init__(self, env, agent,
                  memory_capacity=(500, 'replay memory size')):
-        self.env: _SPEnv = env()
+        self.env: _StuEnv = env()
         self.agent: DQN = agent(_state_size=self.env.n_knowledge + 2,
                                 _n_actions=self.env.n_questions)
         self.replay_memory = self.agent.make_replay_memory(memory_capacity)
@@ -48,9 +48,9 @@ class ValueBasedTrainer:
         writer = SummaryWriter(current_run)
 
         # RL agent training process here
-        for i_episode in tqdm(range(start_episode, args.n_episodes),
-                              initial=start_episode,
-                              total=args.n_episodes):
+        for i_episode in critical(tqdm(range(start_episode, args.n_episodes),
+                                       initial=start_episode,
+                                       total=args.n_episodes)):
             try:
                 self.env.reset()
                 state = self.init_state()

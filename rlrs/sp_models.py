@@ -53,12 +53,9 @@ class EERNN(nn.Module):
 
 
 class DKT(nn.Module):
-    def __init__(self,
-                 args,
-                 dataset=fret.ref('env.dataset')):
+    def __init__(self, _dataset):
         super(DKT, self).__init__()
-        self.dataset = dataset
-        self.questions = Questions(dataset)
+        self.dataset = _dataset
         self.n_knowledge = self.questions.n_knowledge
 
         self.seq_net = DKTNet(self.n_knowledge)
@@ -71,6 +68,8 @@ class DKT(nn.Module):
 '''
 模型各种模块
 '''
+
+
 class QuesNet(nn.Module):
     def __init__(self, wcnt, emb_size=100, ques_size=50, n_layers=1):
         super(QuesNet, self).__init__()
@@ -150,6 +149,7 @@ class DKTNet(nn.Module):
     """
     做题记录序列的RNN（GRU）单元
     """
+
     def __init__(self, n_knowledge):
         super(DKTNet, self).__init__()
         self.n_knwoledge = n_knowledge
