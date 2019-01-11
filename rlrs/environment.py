@@ -23,7 +23,8 @@ class _StuEnv(gym.Env, abc.ABC):
 
     def __init__(self,
                  dataset=('example', 'student record dataset',
-                          ['example', 'zhixue', 'poj', 'ustcoj']),
+                          ['example', 'zhixue_small', 'zhixue',
+                           'poj', 'ustcoj']),
                  expected_avg=(0.5, 'expected average score')):
         super(_StuEnv, self).__init__()
         self.dataset = dataset
@@ -240,7 +241,7 @@ class DeepSPEnv(_StuEnv):
         epoch_size = len(train_iter)
 
         state = self.load_training_state()
-        if args.resume and state:
+        if not args.restart and state:
             self.load_model('int')
             train_iter.load_state_dict(state['train_iter'])
             optim.load_state_dict(state['optim'])
@@ -250,7 +251,7 @@ class DeepSPEnv(_StuEnv):
             n_samples = state['n_samples']
             initial = train_iter._iterations_this_epoch
         else:
-            if args.resume:
+            if not args.restart:
                 logger.info('nothing to resume, starting from scratch')
             n_samples = 0  # track total #samples for plotting
             now = datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S")

@@ -1,21 +1,22 @@
 import fret
-from .environment import _StuEnv
+from .environment import DeepSPEnv
 from .dataprep import load_record
 
 
 # noinspection PyUnusedLocal
 @fret.command
-def train_env(ws, n_epochs=3, log_every=32, save_every=2500, resume=True):
+def train_deep_env(ws, n_epochs=3, log_every=32, save_every=2500,
+                   restart=False):
     logger = ws.logger('train_env')
     logger.info('building env and loading questions')
-    env: _StuEnv = ws.build_module('env')
-    logger.info("[%s] %s, %s", ws, env, train_env.args)
+    env: DeepSPEnv = ws.build_module('env')
+    logger.info("[%s] %s, %s", ws, env, train_deep_env.args)
 
     rec_file = fret.app['datasets'][env.dataset]['record_file']
     logger.info('loading records: %s', rec_file)
     records = load_record(rec_file, env.questions)
     env.set_records(records)
-    env.train(train_env.args)
+    env.train(train_deep_env.args)
 
 
 # noinspection PyUnusedLocal

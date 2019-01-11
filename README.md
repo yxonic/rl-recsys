@@ -13,8 +13,8 @@ mkdir -p ws/dqn-eernn-exp1
 cd ws/dqn-eernn-exp1
 fret config env DeepSPEnv -dataset zhixue
 fret config sp_model EERNN
-fret config         # check current configuration
-fret train_env      # calls SPEnv.train
+fret config          # check current configuration
+fret train_deep)env  # calls SPEnv.train
 
 fret config ValueBasedTrainer
 fret config agent DQN
