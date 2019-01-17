@@ -96,8 +96,7 @@ class Questions:
             qid = index
         if qid in self._ques_set:
             know = np.zeros((self.n_knowledge,))
-            for k in self._ques_know[qid]:
-                know[k] = 1
+            know[self._ques_know[qid]] = 1
 
             return {
                 'id': qid,

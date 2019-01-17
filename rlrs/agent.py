@@ -10,17 +10,14 @@ import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_packed_sequence, PackedSequence
 
 
-@fret.configurable
 class _PolicyNet(nn.Module, abc.ABC):
     """Network that generates action (recommended question) at each step"""
-
-    def __init__(self, _state_size=20, _n_actions=10, _n_heads=1,
-                 _with_state_value=False):
+    def __init__(self, state_size, n_actions, n_heads, with_state_value):
         super(_PolicyNet, self).__init__()
-        self.state_size = _state_size
-        self.n_actions = _n_actions
-        self.n_heads = _n_heads
-        self.with_state_value = _with_state_value
+        self.state_size = state_size
+        self.n_actions = n_actions
+        self.n_heads = n_heads
+        self.with_state_value = with_state_value
 
 
 @fret.configurable
@@ -71,7 +68,9 @@ class GRUNet(_PolicyNet):
 
 @fret.configurable
 class DQN:
-    def __init__(self, policy, _state_size, _n_actions,
+    submodules = ['policy']
+
+    def __init__(self, policy, state_size, n_actions,
                  greedy_epsilon=(0.9, 'greedy policy'),
                  gama=(0.9, 'reward discount rate'),
                  learning_rate=(0.1, 'learning rate'),
@@ -82,10 +81,10 @@ class DQN:
         self.gama = gama
         self.target_replace_every = target_replace_every
         # build DQN network
-        self.current_net: _PolicyNet = policy(_state_size=_state_size,
-                                              _n_actions=_n_actions,
-                                              _n_heads=1,
-                                              _with_state_value=False)
+        self.current_net: _PolicyNet = policy(state_size=state_size,
+                                              n_actions=n_actions,
+                                              n_heads=1,
+                                              with_state_value=False)
         self.target_net = copy.deepcopy(self.current_net)
         self.loss_func = nn.SmoothL1Loss()
         self.optimizer = torch.optim.Adam(self.current_net.parameters(),

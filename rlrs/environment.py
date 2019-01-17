@@ -1,6 +1,7 @@
 import abc
 import datetime
 import random
+from collections import deque
 from itertools import islice
 
 import fret
@@ -38,7 +39,8 @@ class _StuEnv(gym.Env, abc.ABC):
 
         # session history
         self._history = []
-        self.scores = []
+        self._seen_knows = set()
+        self._scores = []
 
         self.action_space = spaces.Discrete(self.n_questions)
         # only provide current step observation: score
@@ -54,20 +56,19 @@ class _StuEnv(gym.Env, abc.ABC):
     def reset(self):
         # new session
         self._history = []
-        self.scores = []
+        self._seen_knows = set()
+        self._scores = deque(maxlen=5)
         self.sample_student()
 
     def step(self, action):
-        self._history.append(action)
         q = self.questions[action]
 
         # generate predicted score
         score = self.exercise(q)
-        self.scores.append(score)
 
         observation = np.asarray([score])
-        reward = self.get_reward()
-        if len(self.scores) > 20:
+        reward = self.get_reward(q, score)
+        if len(self._history) > 20:
             self.stop()
         return observation, reward, self._stop, {}
 
@@ -77,65 +78,34 @@ class _StuEnv(gym.Env, abc.ABC):
     def render(self, mode='human'):
         pass
 
-    def get_reward(self):
+    def get_reward(self, question, score):
         # get_reward from session history
+        self._history.append(question['id'])
+        self._scores.append(score)
+        know = self.questions._ques_know[question['id']]
 
-        # four reward
-        # R_coverage, R_change, R_difficulty, R_expected
+        r_exploration = 0.
+        for k in know:
+            if k not in self._seen_knows:
+                r_exploration += 1
+                self._seen_knows.add(k)
 
-        question = self.questions[self._history[-1]]
-        predict_score = self.scores[-1]
+        if len(self._history) == 1:
+            return r_exploration
 
-        question_diff = question['difficulty']
-        question_know = [self.knowledge[i]
-                         for i, x in enumerate(question['knowledge']) if x > 0]
+        r_exploitation = 0.
+        last_know = self.questions._ques_know[self._history[-2]]
+        if not set(last_know) & set(know) and \
+                self._scores[-2] < self.expected_avg:
+            r_exploitation -= 1
 
-        # calculate reward in current state
-        length = len(self._history)
-        if length == 0:
-            reward = 0
-        else:
-            # coverage reward: R = -1 if current know exists in past know lists
-            past_know_list = []
-            for _q in self._history:
-                _q_know = [self.knowledge[i]
-                           for i, x in enumerate(question['knowledge'])
-                           if x > 0]
-                past_know_list = past_know_list + _q_know
-            past_know_list = set(past_know_list)
-            if set(question_know).issubset(past_know_list):
-                R_coverage = -1
-            else:
-                R_coverage = 0
+        diff = self.questions._ques_diff[question['id']]
+        last_diff = self.questions._ques_diff[self._history[-2]]
+        r_smoothness = -(diff - last_diff) ** 2
 
-            # change reward: R = 1 if score of current ques = 1
-            if predict_score == 1:
-                R_change = 1
-            else:
-                R_change = 0
+        r_satisfaction = -abs(np.mean(self._scores) - self.expected_avg)
 
-            # difficulty reward
-            if len(self._history) > 1:
-                _q = self.questions[self._history[-2]]
-                R_difficulty = - ((question_diff - _q['difficulty']) ** 2)
-            else:
-                R_difficulty = 0
-
-            # expected reward
-            step = 5
-            if length < step:
-                _qs = self.scores[1:]
-            else:
-                _qs = self._history[-step:]
-
-            if _qs:
-                R_expected = 1 - np.abs(1 - np.mean(np.asarray(_qs)))
-            else:
-                R_expected = 0
-
-            reward = R_expected + R_coverage + R_difficulty + R_change
-
-        return reward
+        return r_exploration + r_exploitation + r_smoothness + r_satisfaction
 
     def set_records(self, records):
         self.records = records

@@ -19,10 +19,13 @@ Transition = namedtuple('Transition',
 @fret.configurable
 class ValueBasedTrainer:
     def __init__(self, env, agent,
-                 memory_capacity=(500, 'replay memory size')):
+                 memory_capacity=(500, 'replay memory size'),
+                 exploration_p=(0.5, ('exploration probability, set to 1 for '
+                                      'off policy training'))):
+        self.exploration_p = exploration_p
         self.env: _StuEnv = env()
-        self.agent: DQN = agent(_state_size=self.env.n_knowledge + 2,
-                                _n_actions=self.env.n_questions)
+        self.agent: DQN = agent(state_size=self.env.n_knowledge + 2,
+                                n_actions=self.env.n_questions)
         self.replay_memory = self.agent.make_replay_memory(memory_capacity)
         self._inputs = []
 
@@ -61,9 +64,7 @@ class ValueBasedTrainer:
                     i_batch += 1
 
                     # select action
-                    if i_episode < 200 or (i_episode < 1000 and
-                                           random.random() < 0.5) \
-                            or random.random() < 0.1:
+                    if random.random() <= self.exploration_p:
                         action = self.env.random_action()
                     else:
                         action = self.agent.select_action(
