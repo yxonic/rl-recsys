@@ -44,26 +44,26 @@ class SimpleNet(_PolicyNet):
 
 
 @fret.configurable
-class GRUNet(_PolicyNet):
-    def __init__(self, n_layers=1, **cfg):
-        super(GRUNet, self).__init__(**cfg)
+class LSTMNet(_PolicyNet):
+    def __init__(self, n_layers=1, hidden_size=50, **cfg):
+        super(LSTMNet, self).__init__(**cfg)
         self.n_layers = n_layers
+        self.hidden_size = hidden_size
 
-        self.initial_h = nn.Parameter(torch.zeros(n_layers *
-                                                  self.hidden_size))
-        self.seq_net = nn.GRU(self.state_feature_size, self.seq_h_size, self.n_layers)
-        self.action_net = nn.Linear(self.seq_h_size, self.action_size)
+        self.initial_h = nn.Parameter(torch.zeros(n_layers * hidden_size))
+        self.initial_c = nn.Parameter(torch.zeros(n_layers * hidden_size))
+        self.seq_net = nn.LSTM(self.state_size, hidden_size, n_layers)
+        self.action_net = nn.Linear(hidden_size, self.n_actions)
 
-    def forward(self, x, hidden):
-        if hidden is None:
-            h = self.initial_h.view(self.n_layers, 1, self.seq_hidden_size)
-        else:
-            h = hidden
-
-        # pack_x = nn.utils.pack_padded_sequence(x)
-        _, h = self.seq_net(x, h)
+    def forward(self, x):
+        bs = x.batch_sizes[0]
+        h = self.initial_h.view(self.n_layers, 1, self.hidden_size)
+        h = h.expand(self.n_layers, bs, self.hidden_size)
+        c = self.initial_c.view(self.n_layers, 1, self.hidden_size)
+        c = c.expand(self.n_layers, bs, self.hidden_size)
+        _, (h, _) = self.seq_net(x, (h, c))
         action_values = self.action_net(h)
-        return action_values, h
+        return action_values
 
 
 @fret.configurable

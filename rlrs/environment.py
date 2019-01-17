@@ -151,29 +151,29 @@ class OffPolicyEnv(_StuEnv):
         super(OffPolicyEnv, self).__init__(**cfg)
         self.record = None
         self.qids = None
-        self._scores = None
-        self._pos = 0
+        self.scores = None
+        self.pos = 0
 
     def random_action(self):
-        a = self.questions.stoi[self.qids[self._pos]]
-        self._pos += 1
+        a = self.questions.stoi[self.qids[self.pos]]
+        self.pos += 1
         return a
 
     def sample_student(self):
         """Reset environment state. Here we sample a new student."""
         assert len(self.records) > 0, 'no record found'
         r = self.record = random.choice(self.records)
-        self._scores = {q: s for q, s in zip(r.question, r.score)}
+        self.scores = {q: s for q, s in zip(r.question, r.score)}
         self.qids = r.question
-        self._pos = 0
+        self.pos = 0
 
     def exercise(self, q):
         """Receive an action, returns observation, reward of current step,
         whether the game is done, and some other information."""
-        if self._pos >= len(self.qids):
+        if self.pos >= len(self.qids):
             self.stop()
 
-        return self._scores[q['id']]
+        return self.scores[q['id']]
 
 
 @fret.configurable

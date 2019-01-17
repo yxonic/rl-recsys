@@ -10,6 +10,7 @@ from tqdm import tqdm
 
 from .environment import _StuEnv
 from .agent import DQN
+from .dataprep import load_record
 from .util import critical, make_batch
 
 Transition = namedtuple('Transition',
@@ -33,8 +34,12 @@ class ValueBasedTrainer:
         logger = self.ws.logger('ValueBasedTrainer.train')
         logger.debug('func: <trainer.train>, args: %s', args)
 
+        rec_file = fret.app['datasets'][self.env.dataset]['record_file']
+        records = load_record(rec_file, self.env.questions)
+        self.env.set_records(records)
+
         state = self.load_training_state()
-        if args.resume and state:
+        if not args.restart and state:
             current_run = state['run']
             start_episode = state['i_episode']
             i_batch = state['i_batch']
@@ -72,7 +77,6 @@ class ValueBasedTrainer:
 
                     # take action in env
                     ob, reward, done, info = self.env.step(action)
-                    reward /= 100
 
                     state_ = self.make_state(action, ob)
 
@@ -88,18 +92,18 @@ class ValueBasedTrainer:
                                           ep_sum_reward, i_episode)
                         break
 
-                    # update parameters in agent
-                    # sample from replay memory
-                    if len(self.replay_memory) < args.batch_size:
-                        continue
+                # update parameters in agent
+                # sample from replay memory
+                if len(self.replay_memory) < args.batch_size:
+                    continue
 
-                    samples = self.replay_memory.sample(args.batch_size)
-                    batch = self.make_batch(samples)
+                samples = self.replay_memory.sample(args.batch_size)
+                batch = self.make_batch(samples)
 
-                    # train on batch
-                    loss = self.agent.train_on_batch(batch)
-                    writer.add_scalar('ValueBasedTrainer.train/loss',
-                                      loss, i_batch)
+                # train on batch
+                loss = self.agent.train_on_batch(batch)
+                writer.add_scalar('ValueBasedTrainer.train/loss',
+                                  loss, i_batch)
 
             except KeyboardInterrupt:
                 self.save_training_state({'run': current_run,
@@ -135,11 +139,11 @@ class ValueBasedTrainer:
                             ob.reshape(1, 1)],
                            axis=1)
         self._inputs.append(i)
-        return np.expand_dims(np.concatenate(self._inputs, axis=0), 1)
+        return np.concatenate(self._inputs, axis=0)
 
     def init_state(self):
         self._inputs = [np.zeros((1, self.env.n_knowledge + 2))]
-        return np.expand_dims(self._inputs[-1], 1)
+        return self._inputs[-1]
 
     def make_batch(self, samples):
         # TODO: make batched sequential inputs for agent network

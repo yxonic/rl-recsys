@@ -22,7 +22,7 @@ def train_deep_env(ws, n_epochs=3, log_every=32, save_every=2500,
 # noinspection PyUnusedLocal
 @fret.command
 def train_agent(ws, checkpoint=None, n_episodes=50, batch_size=16,
-                resume=True):
+                restart=False):
     logger = ws.logger('train')
 
     logger.info('building trainer and loading questions')
