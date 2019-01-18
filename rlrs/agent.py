@@ -56,11 +56,14 @@ class LSTMNet(_PolicyNet):
         self.action_net = nn.Linear(hidden_size, self.n_actions)
 
     def forward(self, x):
-        bs = x.batch_sizes[0]
         h = self.initial_h.view(self.n_layers, 1, self.hidden_size)
-        h = h.expand(self.n_layers, bs, self.hidden_size)
         c = self.initial_c.view(self.n_layers, 1, self.hidden_size)
-        c = c.expand(self.n_layers, bs, self.hidden_size)
+        if isinstance(x, PackedSequence):
+            bs = x.batch_sizes[0]
+            h = h.expand(self.n_layers, bs, self.hidden_size)
+            c = c.expand(self.n_layers, bs, self.hidden_size)
+        else:
+            x = x.unsqueeze(1)
         _, (h, _) = self.seq_net(x, (h, c))
         action_values = self.action_net(h)
         return action_values
@@ -73,8 +76,8 @@ class DQN:
     def __init__(self, policy, state_size, n_actions,
                  greedy_epsilon=(0.9, 'greedy policy'),
                  gama=(0.9, 'reward discount rate'),
-                 learning_rate=(0.1, 'learning rate'),
-                 target_replace_every=50,
+                 learning_rate=(1e-3, 'learning rate'),
+                 target_replace_every=100,
                  double_q=True):
         self.learn_step_counter = 0
         self.greedy_epsilon = greedy_epsilon
@@ -86,7 +89,9 @@ class DQN:
                                               n_heads=1,
                                               with_state_value=False)
         self.target_net = copy.deepcopy(self.current_net)
-        self.loss_func = nn.SmoothL1Loss()
+        for param in self.target_net.parameters():
+            param.requires_grad_(False)
+        self.loss_func = nn.MSELoss()
         self.optimizer = torch.optim.Adam(self.current_net.parameters(),
                                           lr=learning_rate)
 
@@ -94,14 +99,16 @@ class DQN:
     def make_replay_memory(size):
         return ReplayMemory(size)
 
-    def select_action(self, state):
-        action_values = self.current_net(state)[0]
+    def select_action(self, state, q_mask=None):
+        action_values = self.current_net(state)[0].squeeze(1)
+        if q_mask is not None:
+            action_values += q_mask.unsqueeze(0)
         return action_values.argmax(1).item()
 
     def init_training(self):
         pass
 
-    def train_on_batch(self, batch):
+    def train_on_batch(self, batch, q_mask=None):
         s, a, s_, r, mask = batch
 
         if self.learn_step_counter % self.target_replace_every == 0:
@@ -109,8 +116,15 @@ class DQN:
         self.learn_step_counter += 1
 
         q_current = self.current_net(s)[0].squeeze(1).gather(1, a).view(-1)
+        if q_mask is None:
+            a_next = self.current_net(s_)[0].squeeze(1).argmax(1) \
+                .unsqueeze(1).detach()
+        else:
+            a_next = self.current_net(s_)[0].squeeze(1) + q_mask.unsqueeze(0)
+            a_next = a_next.argmax(1).unsqueeze(-1).detach()
+
         q_next = self.target_net(s_)[0].squeeze(1).detach()
-        q_target = r + self.gama * q_next.max(1)[0]
+        q_target = r + self.gama * q_next.gather(1, a_next).view(-1) * mask
 
         loss = self.loss_func(q_current, q_target)
 

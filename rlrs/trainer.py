@@ -68,12 +68,18 @@ class ValueBasedTrainer:
                 for _ in critical():
                     i_batch += 1
 
+                    q_mask = None
+                    if hasattr(self.env, 'qids'):
+                        q_mask = torch.zeros(self.env.n_questions) - 1e6
+                        q_mask[[self.env.questions.stoi[x]
+                                for x in self.env.qids]] = 0
+
                     # select action
                     if random.random() <= self.exploration_p:
                         action = self.env.random_action()
                     else:
                         action = self.agent.select_action(
-                            torch.tensor(state).float())
+                            torch.tensor(state).float(), q_mask)
 
                     # take action in env
                     ob, reward, done, info = self.env.step(action)
@@ -92,18 +98,19 @@ class ValueBasedTrainer:
                                           ep_sum_reward, i_episode)
                         break
 
-                # update parameters in agent
-                # sample from replay memory
-                if len(self.replay_memory) < args.batch_size:
-                    continue
+                    # update parameters in agent
+                    # sample from replay memory
+                    if len(self.replay_memory) < args.batch_size:
+                        continue
 
-                samples = self.replay_memory.sample(args.batch_size)
-                batch = self.make_batch(samples)
+                    samples = self.replay_memory.sample(args.batch_size)
+                    batch = self.make_batch(samples)
 
-                # train on batch
-                loss = self.agent.train_on_batch(batch)
-                writer.add_scalar('ValueBasedTrainer.train/loss',
-                                  loss, i_batch)
+                    # train on batch
+                    loss = self.agent.train_on_batch(batch, q_mask)
+
+                    writer.add_scalar('ValueBasedTrainer.train/loss',
+                                      loss, i_batch)
 
             except KeyboardInterrupt:
                 self.save_training_state({'run': current_run,
@@ -151,7 +158,7 @@ class ValueBasedTrainer:
         actions = [torch.tensor(i.action).long().view(1, 1) for i in samples]
         states_ = [torch.tensor(i.next_state).float() for i in samples]
         rewards = [torch.tensor([i.reward]).float() for i in samples]
-        masks = [torch.tensor([i.done]).float() for i in samples]
+        masks = [1 - torch.tensor([i.done]).float() for i in samples]
         states, actions, states_, rewards, masks = \
             make_batch(states, actions, states_, rewards, masks, seq=[0, 2])
 

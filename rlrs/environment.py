@@ -58,6 +58,7 @@ class _StuEnv(gym.Env, abc.ABC):
         self._history = []
         self._seen_knows = set()
         self._scores = deque(maxlen=5)
+        self._stop = False
         self.sample_student()
 
     def step(self, action):
@@ -152,12 +153,9 @@ class OffPolicyEnv(_StuEnv):
         self.record = None
         self.qids = None
         self.scores = None
-        self.pos = 0
 
     def random_action(self):
-        a = self.questions.stoi[self.qids[self.pos]]
-        self.pos += 1
-        return a
+        return self.questions.stoi[random.choice(self.qids)]
 
     def sample_student(self):
         """Reset environment state. Here we sample a new student."""
@@ -165,14 +163,10 @@ class OffPolicyEnv(_StuEnv):
         r = self.record = random.choice(self.records)
         self.scores = {q: s for q, s in zip(r.question, r.score)}
         self.qids = r.question
-        self.pos = 0
 
     def exercise(self, q):
         """Receive an action, returns observation, reward of current step,
         whether the game is done, and some other information."""
-        if self.pos >= len(self.qids):
-            self.stop()
-
         return self.scores[q['id']]
 
 
