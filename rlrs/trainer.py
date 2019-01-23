@@ -14,7 +14,8 @@ from .dataprep import load_record
 from .util import critical, make_batch
 
 Transition = namedtuple('Transition',
-                        ('state', 'action', 'next_state', 'reward', 'done'))
+                        ('state', 'action', 'next_state', 'reward',
+                         'done', 'action_mask'))
 
 
 @fret.configurable
@@ -38,8 +39,12 @@ class ValueBasedTrainer:
         records = load_record(rec_file, self.env.questions)
         self.env.set_records(records)
 
-        state = self.load_training_state()
-        if not args.restart and state:
+        if not args.restart:
+            state = self.load_training_state()
+        else:
+            state = None
+
+        if state:
             current_run = state['run']
             start_episode = state['i_episode']
             i_batch = state['i_batch']
@@ -68,29 +73,42 @@ class ValueBasedTrainer:
                 for _ in critical():
                     i_batch += 1
 
-                    q_mask = None
                     if hasattr(self.env, 'qids'):
-                        q_mask = torch.zeros(self.env.n_questions) - 1e6
-                        q_mask[[self.env.questions.stoi[x]
-                                for x in self.env.qids]] = 0
+                        action_mask = \
+                            torch.zeros(self.env.n_questions) - np.inf
+                        action_mask[[self.env.questions.stoi[x]
+                                    for x in self.env.qids
+                                    if x not in self.env._history]] = 0
+                    else:
+                        action_mask = torch.zeros(self.env.n_questions)
+                        action_mask[[self.env.questions.stoi[x]
+                                    for x in self.env._history]] -= np.inf
 
                     # select action
                     if random.random() <= self.exploration_p:
                         action = self.env.random_action()
                     else:
                         action = self.agent.select_action(
-                            torch.tensor(state).float(), q_mask)
+                            torch.tensor(state).float(), action_mask)
+
+                    # mask this action for s' (duplicates are not allowed)
+                    action_mask[action] -= np.inf
+
+                    if self.exploration_p > 0.05:
+                        self.exploration_p *= 0.999
 
                     # take action in env
                     ob, reward, done, info = self.env.step(action)
 
+                    # s'
                     state_ = self.make_state(action, ob)
 
                     ep_sum_reward += reward
 
                     # save records
                     self.replay_memory.push(
-                        Transition(state, action, state_, reward, done))
+                        Transition(state, action, state_, reward,
+                                   done, action_mask))
                     state = state_
 
                     if done:
@@ -107,7 +125,7 @@ class ValueBasedTrainer:
                     batch = self.make_batch(samples)
 
                     # train on batch
-                    loss = self.agent.train_on_batch(batch, q_mask)
+                    loss = self.agent.train_on_batch(batch)
 
                     writer.add_scalar('ValueBasedTrainer.train/loss',
                                       loss, i_batch)
@@ -158,8 +176,9 @@ class ValueBasedTrainer:
         actions = [torch.tensor(i.action).long().view(1, 1) for i in samples]
         states_ = [torch.tensor(i.next_state).float() for i in samples]
         rewards = [torch.tensor([i.reward]).float() for i in samples]
-        masks = [1 - torch.tensor([i.done]).float() for i in samples]
-        states, actions, states_, rewards, masks = \
-            make_batch(states, actions, states_, rewards, masks, seq=[0, 2])
-
-        return states, actions, states_, rewards, masks
+        done = [torch.tensor([i.done]) for i in samples]
+        mask = [torch.tensor(i.action_mask).unsqueeze(0) for i in samples]
+        states, actions, states_, rewards, done, mask = \
+            make_batch(states, actions, states_, rewards, done, mask,
+                       seq=[0, 2])
+        return states, actions, states_, rewards, done, mask

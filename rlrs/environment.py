@@ -59,6 +59,7 @@ class _StuEnv(gym.Env, abc.ABC):
         self._seen_knows = set()
         self._scores = deque(maxlen=5)
         self._stop = False
+        self._last_bias = 0.
         self.sample_student()
 
     def step(self, action):
@@ -104,9 +105,10 @@ class _StuEnv(gym.Env, abc.ABC):
         last_diff = self.questions._ques_diff[self._history[-2]]
         r_smoothness = -(diff - last_diff) ** 2
 
-        r_satisfaction = -abs(np.mean(self._scores) - self.expected_avg)
-
-        return r_exploration + r_exploitation + r_smoothness + r_satisfaction
+        bias = abs(np.mean(self._scores) - self.expected_avg)
+        r_satisfaction = self._last_bias - bias
+        self._last_bias = bias
+        return r_satisfaction + r_exploration + r_exploitation + r_smoothness
 
     def set_records(self, records):
         self.records = records
@@ -155,19 +157,26 @@ class OffPolicyEnv(_StuEnv):
         self.scores = None
 
     def random_action(self):
-        return self.questions.stoi[random.choice(self.qids)]
+        q = random.choice(self.qids)
+        while q in self._history:
+            q = random.choice(self.qids)
+        return self.questions.stoi[q]
 
     def sample_student(self):
         """Reset environment state. Here we sample a new student."""
         assert len(self.records) > 0, 'no record found'
         r = self.record = random.choice(self.records)
+        while len(r.question) < 20:
+            r = self.record = random.choice(self.records)
         self.scores = {q: s for q, s in zip(r.question, r.score)}
         self.qids = r.question
 
     def exercise(self, q):
         """Receive an action, returns observation, reward of current step,
         whether the game is done, and some other information."""
-        return self.scores[q['id']]
+        if q['id'] in self.scores:
+            return self.scores[q['id']]
+        return np.mean(list(self.scores.values()))
 
 
 @fret.configurable

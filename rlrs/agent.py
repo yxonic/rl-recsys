@@ -53,7 +53,10 @@ class LSTMNet(_PolicyNet):
         self.initial_h = nn.Parameter(torch.zeros(n_layers * hidden_size))
         self.initial_c = nn.Parameter(torch.zeros(n_layers * hidden_size))
         self.seq_net = nn.LSTM(self.state_size, hidden_size, n_layers)
-        self.action_net = nn.Linear(hidden_size, self.n_actions)
+        self.action_heads = [nn.Linear(self.hidden_size, self.n_actions)
+                             for _ in range(self.n_heads)]
+        if self.with_state_value:
+            self.value_head = nn.Linear(self.hidden_size, 1)
 
     def forward(self, x):
         h = self.initial_h.view(self.n_layers, 1, self.hidden_size)
@@ -65,8 +68,12 @@ class LSTMNet(_PolicyNet):
         else:
             x = x.unsqueeze(1)
         _, (h, _) = self.seq_net(x, (h, c))
-        action_values = self.action_net(h)
-        return action_values
+        h = h[-1]  # last layer hidden
+        action_values = [net(h) for net in self.action_heads]
+        if self.with_state_value:
+            return action_values, self.value_head(h)
+        else:
+            return action_values
 
 
 @fret.configurable
@@ -100,31 +107,32 @@ class DQN:
         return ReplayMemory(size)
 
     def select_action(self, state, q_mask=None):
-        action_values = self.current_net(state)[0].squeeze(1)
+        action_values = self.current_net(state)[0]
         if q_mask is not None:
-            action_values += q_mask.unsqueeze(0)
+            action_values *= q_mask
         return action_values.argmax(1).item()
 
     def init_training(self):
         pass
 
-    def train_on_batch(self, batch, q_mask=None):
-        s, a, s_, r, mask = batch
+    def train_on_batch(self, batch):
+        s, a, s_, r, done, mask = batch
+        done = done.float()
 
         if self.learn_step_counter % self.target_replace_every == 0:
             self.target_net.load_state_dict(self.current_net.state_dict())
         self.learn_step_counter += 1
 
-        q_current = self.current_net(s)[0].squeeze(1).gather(1, a).view(-1)
-        if q_mask is None:
-            a_next = self.current_net(s_)[0].squeeze(1).argmax(1) \
-                .unsqueeze(1).detach()
-        else:
-            a_next = self.current_net(s_)[0].squeeze(1) + q_mask.unsqueeze(0)
-            a_next = a_next.argmax(1).unsqueeze(-1).detach()
+        q_current = self.current_net(s)[0].gather(1, a).view(-1)  # Q(s,a)
 
-        q_next = self.target_net(s_)[0].squeeze(1).detach()
-        q_target = r + self.gama * q_next.gather(1, a_next).view(-1) * mask
+        a_next = self.current_net(s_)[0] + mask
+        a_next = a_next.argmax(1).unsqueeze(-1).detach()  # argmax(Q(s',a))
+
+        q_next = self.target_net(s_)[0].squeeze(1).detach()  # target Q
+
+        q_target = r + \
+            self.gama * q_next.gather(1, a_next).view(-1) * \
+            (1 - done)  # if done, this part becomes zero
 
         loss = self.loss_func(q_current, q_target)
 
