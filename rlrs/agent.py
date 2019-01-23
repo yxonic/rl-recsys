@@ -33,7 +33,9 @@ class SimpleNet(_PolicyNet):
 
     def forward(self, x):
         if isinstance(x, PackedSequence):
-            x, lens = pad_packed_sequence(x)
+            x, _ = pad_packed_sequence(x)
+        else:
+            x = x.unsqueeze(1)
         x = x.sum(dim=0)
         x = F.relu(self.input_net(x))
         action_values = [net(x) for net in self.action_heads]
@@ -49,10 +51,11 @@ class LSTMNet(_PolicyNet):
         super(LSTMNet, self).__init__(**cfg)
         self.n_layers = n_layers
         self.hidden_size = hidden_size
-
+        self.emb = nn.Linear(self.state_size, hidden_size)
+        self.act = nn.Tanh()
         self.initial_h = nn.Parameter(torch.zeros(n_layers * hidden_size))
         self.initial_c = nn.Parameter(torch.zeros(n_layers * hidden_size))
-        self.seq_net = nn.LSTM(self.state_size, hidden_size, n_layers)
+        self.seq_net = nn.LSTM(hidden_size, hidden_size, n_layers)
         self.action_heads = [nn.Linear(self.hidden_size, self.n_actions)
                              for _ in range(self.n_heads)]
         if self.with_state_value:
@@ -62,11 +65,12 @@ class LSTMNet(_PolicyNet):
         h = self.initial_h.view(self.n_layers, 1, self.hidden_size)
         c = self.initial_c.view(self.n_layers, 1, self.hidden_size)
         if isinstance(x, PackedSequence):
+            x = PackedSequence(self.act(self.emb(x.data)), x.batch_sizes)
             bs = x.batch_sizes[0]
             h = h.expand(self.n_layers, bs, self.hidden_size)
             c = c.expand(self.n_layers, bs, self.hidden_size)
         else:
-            x = x.unsqueeze(1)
+            x = self.act(self.emb(x)).unsqueeze(1)
         _, (h, _) = self.seq_net(x, (h, c))
         h = h[-1]  # last layer hidden
         action_values = [net(h) for net in self.action_heads]
@@ -81,14 +85,11 @@ class DQN:
     submodules = ['policy']
 
     def __init__(self, policy, state_size, n_actions,
-                 greedy_epsilon=(0.9, 'greedy policy'),
-                 gama=(0.9, 'reward discount rate'),
+                 gamma=(0.9, 'reward discount rate'),
                  learning_rate=(1e-3, 'learning rate'),
-                 target_replace_every=100,
-                 double_q=True):
+                 target_replace_every=100):
         self.learn_step_counter = 0
-        self.greedy_epsilon = greedy_epsilon
-        self.gama = gama
+        self.gamma = gamma
         self.target_replace_every = target_replace_every
         # build DQN network
         self.current_net: _PolicyNet = policy(state_size=state_size,
@@ -107,13 +108,10 @@ class DQN:
         return ReplayMemory(size)
 
     def select_action(self, state, q_mask=None):
-        action_values = self.current_net(state)[0]
+        action_values = self.current_net(state)[0].view(-1)
         if q_mask is not None:
-            action_values *= q_mask
-        return action_values.argmax(1).item()
-
-    def init_training(self):
-        pass
+            action_values += q_mask
+        return action_values.argmax().item()
 
     def train_on_batch(self, batch):
         s, a, s_, r, done, mask = batch
@@ -131,8 +129,8 @@ class DQN:
         q_next = self.target_net(s_)[0].squeeze(1).detach()  # target Q
 
         q_target = r + \
-            self.gama * q_next.gather(1, a_next).view(-1) * \
-            (1 - done)  # if done, this part becomes zero
+                   self.gamma * q_next.gather(1, a_next).view(-1) * \
+                   (1 - done)  # if done, this part becomes zero
 
         loss = self.loss_func(q_current, q_target)
 
@@ -141,17 +139,29 @@ class DQN:
         self.optimizer.step()
         return loss.item()
 
-    def save_model(self, tag):
-        pass
-
     def load_model(self, tag):
-        pass
+        cp_path = self.ws.checkpoint_path / ('%s.%s.pt' % (
+            self.current_net.__class__.__name__, str(tag)))
+        state = torch.load(str(cp_path), map_location=lambda s, loc: s)
+        self.current_net.load_state_dict(state)
+        self.target_net.load_state_dict(state)
+
+    def save_model(self, tag):
+        cp_path = self.ws.checkpoint_path / ('%s.%s.pt' % (
+            self.current_net.__class__.__name__, str(tag)))
+        torch.save(self.current_net.state_dict(), cp_path)
 
     def state_dict(self):
-        pass
+        return {
+            'current': self.current_net.state_dict(),
+            'target': self.target_net.state_dict(),
+            'optim': self.optimizer.state_dict()
+        }
 
     def load_state_dict(self, state):
-        pass
+        self.current_net.load_state_dict(state['current'])
+        self.target_net.load_state_dict(state['target'])
+        self.optimizer.load_state_dict(state['optim'])
 
 
 class ReplayMemory(object):

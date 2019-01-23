@@ -1,6 +1,6 @@
 import datetime
 import random
-from collections import namedtuple
+from collections import namedtuple, deque
 
 import fret
 import numpy as np
@@ -11,7 +11,7 @@ from tqdm import tqdm
 from .environment import _StuEnv
 from .agent import DQN
 from .dataprep import load_record
-from .util import critical, make_batch
+from .util import critical, make_batch, Accumulator
 
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward',
@@ -23,13 +23,15 @@ class ValueBasedTrainer:
     def __init__(self, env, agent,
                  memory_capacity=(500, 'replay memory size'),
                  exploration_p=(0.5, ('exploration probability, set to 1 for '
-                                      'off policy training'))):
+                                      'off policy training')),
+                 maxlen=(20, 'max sequence length')):
         self.exploration_p = exploration_p
         self.env: _StuEnv = env()
         self.agent: DQN = agent(state_size=self.env.n_knowledge + 2,
                                 n_actions=self.env.n_questions)
         self.replay_memory = self.agent.make_replay_memory(memory_capacity)
-        self._inputs = []
+        self.maxlen = maxlen
+        self._inputs = deque(maxlen=maxlen)
 
     def train(self, args):
         logger = self.ws.logger('ValueBasedTrainer.train')
@@ -56,7 +58,8 @@ class ValueBasedTrainer:
                               ('ValueBasedTrainer.train/run-%s/' % now))
             start_episode = 0
             i_batch = 0
-            self.agent.init_training()
+        losses = Accumulator()
+        returns = Accumulator()
 
         writer = SummaryWriter(current_run)
 
@@ -68,7 +71,7 @@ class ValueBasedTrainer:
                 self.env.reset()
                 state = self.init_state()
 
-                ep_sum_reward = 0
+                rewards = []
 
                 for _ in critical():
                     i_batch += 1
@@ -94,16 +97,13 @@ class ValueBasedTrainer:
                     # mask this action for s' (duplicates are not allowed)
                     action_mask[action] -= np.inf
 
-                    if self.exploration_p > 0.05:
-                        self.exploration_p *= 0.999
-
                     # take action in env
                     ob, reward, done, info = self.env.step(action)
 
                     # s'
                     state_ = self.make_state(action, ob)
 
-                    ep_sum_reward += reward
+                    rewards.append(reward)
 
                     # save records
                     self.replay_memory.push(
@@ -112,8 +112,18 @@ class ValueBasedTrainer:
                     state = state_
 
                     if done:
-                        writer.add_scalar('ValueBasedTrainer.train/return',
-                                          ep_sum_reward, i_episode)
+                        ret = 0
+                        for r in reversed(rewards):
+                            ret = r + self.agent.gamma * ret
+                        returns += ret
+
+                        if args.log_every > 0 and \
+                                i_episode % (args.log_every // 8) == 0:
+
+                            writer.add_scalar('ValueBasedTrainer.train/return',
+                                              returns.mean(), i_episode)
+                            returns.reset()
+
                         break
 
                     # update parameters in agent
@@ -126,9 +136,18 @@ class ValueBasedTrainer:
 
                     # train on batch
                     loss = self.agent.train_on_batch(batch)
+                    losses += loss
 
-                    writer.add_scalar('ValueBasedTrainer.train/loss',
-                                      loss, i_batch)
+                    if args.log_every > 0 and i_batch % args.log_every == 0:
+                        writer.add_scalar('ValueBasedTrainer.train/loss',
+                                          losses.mean(), i_batch)
+                        losses.reset()
+
+                if self.exploration_p > 0.05:
+                    self.exploration_p *= 0.999
+
+                if args.save_every > 0 and i_episode % args.save_every == 0:
+                    self.agent.save_model(i_episode)
 
             except KeyboardInterrupt:
                 self.save_training_state({'run': current_run,
@@ -167,7 +186,8 @@ class ValueBasedTrainer:
         return np.concatenate(self._inputs, axis=0)
 
     def init_state(self):
-        self._inputs = [np.zeros((1, self.env.n_knowledge + 2))]
+        self._inputs.clear()
+        self._inputs.append(np.zeros((1, self.env.n_knowledge + 2)))
         return self._inputs[-1]
 
     def make_batch(self, samples):

@@ -43,3 +43,36 @@ def make_batch(*inputs, seq=None):
         else:
             outputs.append(pack_sequence(v))
     return outputs
+
+
+class Accumulator:
+    def __init__(self, init=0):
+        self.total = init
+        self.cnt = 0
+
+    def __iadd__(self, other):
+        self.total += other
+        self.cnt += 1
+        return self
+
+    def mean(self):
+        return self.total / self.cnt if self.cnt > 0 else 0
+
+    def sum(self):
+        return self.total
+
+    def __int__(self):
+        return int(self.total)
+
+    def __float__(self):
+        return float(self.total)
+
+    def reset(self):
+        self.total = 0
+        self.cnt = 0
+
+    def __getstate__(self):
+        return {'total': self.total, 'cnt': self.cnt}
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)

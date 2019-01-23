@@ -14,7 +14,7 @@ cd ws/dqn-eernn-exp1
 fret config env DeepSPEnv -dataset zhixue
 fret config sp_model EERNN
 fret config          # check current configuration
-fret train_deep)env  # calls SPEnv.train
+fret train_deep_env  # calls SPEnv.train
 
 fret config ValueBasedTrainer
 fret config agent DQN
@@ -35,7 +35,8 @@ tensorboard --logdir ws
 ## TODOs
 - [x] Load datasets: questions, words, knowledge, records
 - [x] `DeepSPEnv.train`: train deep score prediction models on records
-- [ ] Sample students
+- [x] Sample students
 - [x] Command `train_agent`
 - [ ] Policy Gradient and Actor Critic methods
-- [ ] Reward function
+- [x] Reward function
+- [ ] Evaluation

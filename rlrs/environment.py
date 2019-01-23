@@ -26,7 +26,8 @@ class _StuEnv(gym.Env, abc.ABC):
                  dataset=('example', 'student record dataset',
                           ['example', 'zhixue_small', 'zhixue',
                            'poj', 'ustcoj']),
-                 expected_avg=(0.5, 'expected average score')):
+                 expected_avg=(0.5, 'expected average score'),
+                 r_lambdas=([1., 1., 1., 1.], 'lambdas for four rewards')):
         super(_StuEnv, self).__init__()
         self.dataset = dataset
         self.questions = Questions(dataset)
@@ -36,11 +37,13 @@ class _StuEnv(gym.Env, abc.ABC):
         self.n_words = self.questions.n_words
         self.records = []
         self.expected_avg = expected_avg
+        self.r_lambdas = r_lambdas
 
         # session history
         self._history = []
         self._seen_knows = set()
         self._scores = []
+        self._maxlen = 20
 
         self.action_space = spaces.Discrete(self.n_questions)
         # only provide current step observation: score
@@ -70,7 +73,7 @@ class _StuEnv(gym.Env, abc.ABC):
 
         observation = np.asarray([score])
         reward = self.get_reward(q, score)
-        if len(self._history) > 20:
+        if len(self._history) > self._maxlen:
             self.stop()
         return observation, reward, self._stop, {}
 
@@ -105,10 +108,10 @@ class _StuEnv(gym.Env, abc.ABC):
         last_diff = self.questions._ques_diff[self._history[-2]]
         r_smoothness = -(diff - last_diff) ** 2
 
-        bias = abs(np.mean(self._scores) - self.expected_avg)
-        r_satisfaction = self._last_bias - bias
-        self._last_bias = bias
-        return r_satisfaction + r_exploration + r_exploitation + r_smoothness
+        r_satisfaction = -abs(np.mean(self._scores) - self.expected_avg)
+
+        rewards = [r_exploration, r_exploitation, r_smoothness, r_satisfaction]
+        return sum(a * r for a, r in zip(self.r_lambdas, rewards))
 
     def set_records(self, records):
         self.records = records
@@ -158,7 +161,7 @@ class OffPolicyEnv(_StuEnv):
 
     def random_action(self):
         q = random.choice(self.qids)
-        while q in self._history:
+        while len(self._history) > len(self.qids) and q in self._history:
             q = random.choice(self.qids)
         return self.questions.stoi[q]
 
@@ -168,6 +171,7 @@ class OffPolicyEnv(_StuEnv):
         r = self.record = random.choice(self.records)
         while len(r.question) < 20:
             r = self.record = random.choice(self.records)
+        self._maxlen = int(len(r.question) * 0.6)
         self.scores = {q: s for q, s in zip(r.question, r.score)}
         self.qids = r.question
 
