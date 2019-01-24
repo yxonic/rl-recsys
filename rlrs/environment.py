@@ -96,7 +96,7 @@ class _StuEnv(gym.Env, abc.ABC):
                 self._seen_knows.add(k)
 
         if len(self._history) == 1:
-            return r_exploration
+            return self.r_lambdas[0] * r_exploration
 
         r_exploitation = 0.
         last_know = self.questions._ques_know[self._history[-2]]
@@ -171,16 +171,14 @@ class OffPolicyEnv(_StuEnv):
         r = self.record = random.choice(self.records)
         while len(r.question) < 20:
             r = self.record = random.choice(self.records)
-        self._maxlen = int(len(r.question) * 0.6)
+        self._maxlen = 12
         self.scores = {q: s for q, s in zip(r.question, r.score)}
         self.qids = r.question
 
     def exercise(self, q):
         """Receive an action, returns observation, reward of current step,
         whether the game is done, and some other information."""
-        if q['id'] in self.scores:
-            return self.scores[q['id']]
-        return np.mean(list(self.scores.values()))
+        return self.scores[q['id']]
 
 
 @fret.configurable

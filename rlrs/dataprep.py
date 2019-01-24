@@ -91,7 +91,7 @@ class Questions:
 
     def __getitem__(self, index):
         if isinstance(index, int):
-            qid = self.vocab[index]
+            qid = self.vocab.itos[index]
         else:
             qid = index
         if qid in self._ques_set:
@@ -106,6 +106,13 @@ class Questions:
             }
         else:
             return None
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
+
+    def __len__(self):
+        return len(self.vocab)
 
     @property
     def knowledge(self):

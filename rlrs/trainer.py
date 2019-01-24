@@ -27,8 +27,7 @@ class ValueBasedTrainer:
                  maxlen=(20, 'max sequence length')):
         self.exploration_p = exploration_p
         self.env: _StuEnv = env()
-        self.agent: DQN = agent(state_size=self.env.n_knowledge + 2,
-                                n_actions=self.env.n_questions)
+        self.agent: DQN = agent(questions=self.env.questions)
         self.replay_memory = self.agent.make_replay_memory(memory_capacity)
         self.maxlen = maxlen
         self._inputs = deque(maxlen=maxlen)
@@ -72,20 +71,14 @@ class ValueBasedTrainer:
                 state = self.init_state()
 
                 rewards = []
+                action_mask = torch.ones(self.env.n_questions).byte()
+                if hasattr(self.env, 'qids'):
+                    action_mask[[self.env.questions.stoi[x]
+                                for x in self.env.qids]] = 0
+                    action_mask = 1 - action_mask
 
                 for _ in critical():
                     i_batch += 1
-
-                    if hasattr(self.env, 'qids'):
-                        action_mask = \
-                            torch.zeros(self.env.n_questions) - np.inf
-                        action_mask[[self.env.questions.stoi[x]
-                                    for x in self.env.qids
-                                    if x not in self.env._history]] = 0
-                    else:
-                        action_mask = torch.zeros(self.env.n_questions)
-                        action_mask[[self.env.questions.stoi[x]
-                                    for x in self.env._history]] -= np.inf
 
                     # select action
                     if random.random() <= self.exploration_p:
@@ -95,7 +88,7 @@ class ValueBasedTrainer:
                             torch.tensor(state).float(), action_mask)
 
                     # mask this action for s' (duplicates are not allowed)
-                    action_mask[action] -= np.inf
+                    action_mask[action] = 0
 
                     # take action in env
                     ob, reward, done, info = self.env.step(action)
@@ -193,7 +186,7 @@ class ValueBasedTrainer:
     def make_batch(self, samples):
         # TODO: make batched sequential inputs for agent network
         states = [torch.tensor(i.state).float() for i in samples]
-        actions = [torch.tensor(i.action).long().view(1, 1) for i in samples]
+        actions = [torch.tensor([i.action]).long() for i in samples]
         states_ = [torch.tensor(i.next_state).float() for i in samples]
         rewards = [torch.tensor([i.reward]).float() for i in samples]
         done = [torch.tensor([i.done]) for i in samples]
