@@ -90,6 +90,8 @@ class DQN:
         # get embedding for each question
         state_size = self.state_size = questions.n_knowledge + 2
         action_size = self.action_size = questions.n_knowledge + 1
+        self.questions = questions
+
         self.embs = []
         for q in questions:
             i = np.concatenate([q['knowledge'].reshape(1, -1),
@@ -97,6 +99,8 @@ class DQN:
                                axis=1)
             self.embs.append(torch.tensor(i).float())
         self.embs = torch.cat(self.embs, dim=0)
+
+        self.inputs = []
 
         # build DQN network
         self.current_net: _PolicyNet = policy(state_size=state_size,
@@ -108,19 +112,36 @@ class DQN:
         self.optimizer = torch.optim.Adam(self.current_net.parameters(),
                                           lr=learning_rate)
 
+    def step(self, action, ob):
+        q = self.questions[action]
+        i = np.concatenate([q['knowledge'].reshape(1, -1),
+                            np.array([q['difficulty']]).reshape(1, 1),
+                            ob.reshape(1, 1)],
+                           axis=1)
+        self.inputs.append(torch.tensor(i).float())
+        return torch.cat(self.inputs, dim=0)
+
+    def reset(self):
+        self.inputs.clear()
+        self.inputs.append(torch.zeros((1, self.questions.n_knowledge + 2)))
+        return self.inputs[-1]
+
     @staticmethod
     def make_replay_memory(size):
         return ReplayMemory(size)
 
     def select_action(self, state, q_mask=None):
+        values, ind = self.get_action_values(state, q_mask)
+        return ind[values.argmax()].item()
+
+    def get_action_values(self, state, q_mask=None):
         actions = self.embs
         ind = torch.arange(actions.size(0))
         if q_mask is not None:
             actions = actions.masked_select(q_mask.unsqueeze(1)) \
                 .view(-1, self.action_size)
             ind = ind.masked_select(q_mask)
-        values = self.current_net(state, actions)
-        return ind[values.argmax()].item()
+        return self.current_net(state, actions), ind
 
     def train_on_batch(self, batch):
         s, a, s_, r, done, mask = batch

@@ -3,7 +3,6 @@ import random
 from collections import namedtuple, deque
 
 import fret
-import numpy as np
 import torch
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
@@ -68,7 +67,7 @@ class ValueBasedTrainer:
                                        total=args.n_episodes)):
             try:
                 self.env.reset()
-                state = self.init_state()
+                state = self.agent.reset()
 
                 rewards = []
                 action_mask = torch.ones(self.env.n_questions).byte()
@@ -94,7 +93,7 @@ class ValueBasedTrainer:
                     ob, reward, done, info = self.env.step(action)
 
                     # s'
-                    state_ = self.make_state(action, ob)
+                    state_ = self.agent.step(action, ob)
 
                     rewards.append(reward)
 
@@ -169,25 +168,11 @@ class ValueBasedTrainer:
             (self.__class__.__name__ + '_state.pt')
         torch.save(state, str(cp_path))
 
-    def make_state(self, action, ob):
-        q = self.env.questions[action]
-        i = np.concatenate([q['knowledge'].reshape(1, -1),
-                            np.array([q['difficulty']]).reshape(1, 1),
-                            ob.reshape(1, 1)],
-                           axis=1)
-        self._inputs.append(i)
-        return np.concatenate(self._inputs, axis=0)
-
-    def init_state(self):
-        self._inputs.clear()
-        self._inputs.append(np.zeros((1, self.env.n_knowledge + 2)))
-        return self._inputs[-1]
-
     def make_batch(self, samples):
         # TODO: make batched sequential inputs for agent network
-        states = [torch.tensor(i.state).float() for i in samples]
+        states = [i.state for i in samples]
         actions = [torch.tensor([i.action]).long() for i in samples]
-        states_ = [torch.tensor(i.next_state).float() for i in samples]
+        states_ = [i.next_state for i in samples]
         rewards = [torch.tensor([i.reward]).float() for i in samples]
         done = [torch.tensor([i.done]) for i in samples]
         mask = [torch.tensor(i.action_mask).unsqueeze(0) for i in samples]
