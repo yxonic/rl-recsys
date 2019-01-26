@@ -1,7 +1,10 @@
+import os
+
 import fret
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.utils.rnn import PackedSequence
 
 from .dataprep import load_embedding, Questions
 
@@ -22,11 +25,12 @@ class EERNN(nn.Module):
         self.n_layers = n_layers
         self.attn_k = attn_k
 
-        self.question_net = QuesNet(_wcnt, emb_size, ques_h_size, n_layers)
+        self.question_net = QuesNet(_wcnt, ques_h_size, emb_size)
         if _dataset:
             emb_file = 'data/%s/emb_%d.txt' % (_dataset, emb_size)
-            embs = load_embedding(emb_file)
-            self.question_net.load_emb(embs)
+            if os.path.exists(emb_file):
+                embs = load_embedding(emb_file)
+                self.question_net.load_emb(embs)
 
         self.seq_net = EERNNSeqNet(ques_h_size, seq_h_size, n_layers, attn_k)
 
@@ -34,10 +38,7 @@ class EERNN(nn.Module):
         # question: {'id': ..., 'text': ...,
         #            'difficulty': ..., 'knowledge': ...}
         ques_text = question['text']
-
-        ques_h0 = None
-        ques_v, ques_h = self.question_net(ques_text.view(-1, 1), ques_h0)
-
+        ques_v = self.question_net(ques_text)
         s, h = self.seq_net(ques_v[0], score, hidden)
 
         if hidden is None:
@@ -45,7 +46,7 @@ class EERNN(nn.Module):
         else:
             # concat all qs and hs for attention
             qs, hs = hidden
-            qs = torch.cat([qs, ques_v])
+            qs = torch.cat([qs, ques_v], dim=0)
             hs = torch.cat([hs, h])
             hidden = qs, hs
 
@@ -71,28 +72,39 @@ class DKT(nn.Module):
 
 
 class QuesNet(nn.Module):
-    def __init__(self, wcnt, emb_size=100, ques_size=50, n_layers=1):
-        super(QuesNet, self).__init__()
+    def __init__(self, wcnt, hidden_size, emb_size=None):
+        super().__init__()
         self.wcnt = wcnt
-        self.emb_size = emb_size
-        self.ques_size = ques_size
-        self.n_layers = n_layers
+        self.hidden_size = hidden_size
+        if not emb_size:
+            emb_size = hidden_size // 2  # bidirectional
+        self.embedding = nn.Embedding(wcnt, emb_size)
+        self.rnn = nn.LSTM(emb_size, hidden_size // 2, 1,
+                           bidirectional=True, batch_first=True)
+        self.h0 = nn.Parameter(torch.rand(2, 1, hidden_size // 2))
+        self.c0 = nn.Parameter(torch.rand(2, 1, hidden_size // 2))
 
-        self.embedding_net = nn.Embedding(wcnt, self.emb_size, padding_idx=0)
-        self.question_net = nn.GRU(self.emb_size, self.ques_size // 2,
-                                   self.n_layers,
-                                   bidirectional=True)
+    def forward(self, q):
+        if isinstance(q, PackedSequence):
+            bs = q.batch_sizes[0]
+            emb = self.embedding(q.data)
+            emb = PackedSequence(emb, q.batch_sizes)
+        else:
+            q = q.unsqueeze(0)  # batch
+            bs = 1
+            emb = self.embedding(q)
+        h = self.init_h(bs)
+        y, h = self.rnn(emb, h)
+        return h[0].view(bs, -1)
 
-    def forward(self, question, hidden):
-        x = self.embedding_net(question)
-        y, h = self.question_net(x, hidden)
-
-        y, _ = torch.max(y, 0)
-        return y, h
+    def init_h(self, batch_size):
+        size = list(self.h0.size())
+        size[1] = batch_size
+        return self.h0.expand(size), self.c0.expand(size)
 
     def load_emb(self, emb):
-        self.embedding_net.weight.data.copy_(torch.from_numpy(emb))
-        self.embedding_net.weight.requires_grad = False
+        self.embedding.weight.data.copy_(torch.from_numpy(emb))
+        self.embedding.weight.requires_grad = False
 
 
 class EERNNSeqNet(nn.Module):
