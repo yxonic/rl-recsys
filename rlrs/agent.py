@@ -2,6 +2,7 @@ import abc
 import copy
 import itertools
 import math
+import os
 import random
 from collections import deque
 
@@ -91,11 +92,10 @@ class DQN(Agent):
         self.questions = questions
 
         sp_model: EERNN = sp_model(_dataset=None, _wcnt=questions.n_words)
-        cp_path = self.ws.checkpoint_path / ('%s.%s.pt' % (
-            sp_model.__class__.__name__, str('best')))
-        if cp_path.exists():
-            sp_model.load_state_dict(torch.load(
-                str(cp_path), map_location=lambda s, loc: s))
+        cp_path = 'ws/best/%s.%s.pt' % (questions.dataset,
+                                        sp_model.__class__.__name__)
+        sp_model.load_state_dict(torch.load(
+            str(cp_path), map_location=lambda s, loc: s))
         quesnet = sp_model.question_net
         for param in quesnet.parameters():
             param.requires_grad_(False)
@@ -147,7 +147,8 @@ class DQN(Agent):
 
     def select_action(self, state, q_mask=None):
         values, ind = self.get_action_values(state, q_mask)
-        return int(ind[values.argmax()])
+        v, i = values.max(), values.argmax()
+        return int(ind[i]), v
 
     def get_action_values(self, state, q_mask=None):
         actions = self.embs
@@ -175,7 +176,7 @@ class DQN(Agent):
         s_padded, lens = pad_packed_sequence(s_)
         for i in range(s_padded.size(1)):  # batch
             a_next.append(
-                self.select_action(s_padded[:lens[i], i, :], mask[i]))
+                self.select_action(s_padded[:lens[i], i, :], mask[i])[0])
         a_next = torch.tensor(a_next).long()  # (_, 1)
 
         q_next = self.target_net(s_, self.embs[a_next])  # target Q, (_, 1)
@@ -242,7 +243,7 @@ class PolicyNet(nn.Module, abc.ABC):
 @fret.configurable
 class SimpleNet(PolicyNet):
     def __init__(self, hidden_size=200, n_layers=1, **cfg):
-        super(SimpleNet, self).__init__(**cfg)
+        super(SimpleNet, self).__init__(cfg['state_size'], cfg['action_size'])
         self.hidden_size = hidden_size
         self.n_layers = n_layers
         self.transform_net = nn.Sequential(

@@ -16,7 +16,6 @@ word_list = "data/zhixue_small/words.txt"
 knowledge_list = "data/zhixue_small/firstknow_list.txt"
 record_file = "data/zhixue_small/records.txt"
 test_record_file = "data/zhixue_small/test_records.txt"
-offline_test_record_file = "data/zhixue_small/test_records.txt"
 
 [datasets.zhixue]
 question_text_file = "data/zhixue/id_fea.tsv"

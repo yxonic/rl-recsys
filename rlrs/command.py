@@ -4,7 +4,7 @@ import fret
 import numpy as np
 import torch
 
-from .environment import DeepSPEnv, OffPolicyEnv
+from .environment import DeepSPEnv, _StuEnv
 from .agent import Agent
 from .dataprep import load_record
 from .util import ndcg_at_k, Accumulator, critical
@@ -43,9 +43,10 @@ def train_agent(ws, checkpoint=None, n_episodes=10000, batch_size=16,
 
 
 @fret.command
-def eval_point(ws: fret.Workspace, tag):
+def eval_offline(ws: fret.Workspace, tag, seq=False):
     logger = ws.logger('eval_point')
-    env: OffPolicyEnv = ws.build_module('env')
+
+    env: _StuEnv = ws.build_module('env')
     questions = env.questions
     rec_file = fret.app['datasets'][env.dataset]['record_file']
     records = load_record(rec_file, questions)
@@ -58,38 +59,53 @@ def eval_point(ws: fret.Workspace, tag):
 
     torch.set_grad_enabled(False)
     ndcgs = Accumulator()
+    results = []
     try:
         for lineno, (r, r_) in critical(enumerate(zip(records, test_records))):
-            if len(r_.score) < 10:
+            if len(r_.score) < 20:
                 continue
-            scores = {}
+
+            id_score = {}
             for q, s in zip(r.question, r.score):
-                scores[q] = s
-            if len(scores) < 10:
-                continue
+                id_score[q] = s
+            for q, s in zip(r_.question, r_.score):
+                id_score[q] = s
 
             action_mask = torch.zeros(env.n_questions).byte()
             action_mask[[env.questions.stoi[x] for x in r.question]] = 1
 
             state = agent.reset()
             for _ in r.question:
-                a = agent.select_action(state, action_mask)
+                a = agent.select_action(state, action_mask)[0]
                 action_mask[a] = 0
-                score = np.array([scores[env.questions.itos[a]]])
+                score = np.array([id_score[env.questions.itos[a]]])
                 state = agent.step(a, score)
 
-            true = {}
-            for q, s in zip(r_.question, r_.score):
-                true[q] = s
+            if seq:
+                score = []
+                ind = []
+                action_mask = torch.zeros(env.n_questions).byte()
+                action_mask[[env.questions.stoi[x] for x in r_.question]] = 1
+                for _ in r_.question:
+                    a, v = agent.select_action(state, action_mask)
+                    action_mask[a] = 0
+                    score.append(v)
+                    ind.append(a)
+                    state = agent.step(a, np.asarray([s]))
+                score = np.asarray(score)
+            else:
+                action_mask = torch.zeros(env.n_questions).byte()
+                action_mask[[env.questions.stoi[x] for x in r_.question]] = 1
+                score, ind = agent.get_action_values(state, action_mask)
 
-            action_mask = torch.zeros(env.n_questions).byte()
-            action_mask[[env.questions.stoi[x] for x in r_.question]] = 1
-            score, ind = agent.get_action_values(state, action_mask)
             M, m = score.max(), score.min()
             pred = (score - m) / (M - m)
+            true = [id_score[env.questions.itos[i]] for i in ind]
+            ids = [env.questions.itos[i] for i in ind]
 
-            rv = [(true[env.questions.itos[ind[i]]], pred[i])
-                  for i in range(ind.shape[0])]
+            results.append(list(zip(ids, true, pred)))
+
+            rv = [(true[i], pred[i]) for i in range(len(ind))]
             ndcgs += ndcg_at_k(rv, 10)
 
             if lineno % 100 == 0:
@@ -98,43 +114,11 @@ def eval_point(ws: fret.Workspace, tag):
         pass
 
     logger.info('[FINAL] NDCG: %.4f, MAP: %.4f', ndcgs.mean(), 0)
-
-
-@fret.command
-def eval_offline(ws: fret.Workspace, tag):
-    env: OffPolicyEnv = ws.build_module('env')
-    rec_file = fret.app['datasets'][env.dataset]['offline_test_record_file']
-    records = load_record(rec_file, env.questions)
-
-    agent: Agent = ws.build_module('agent', questions=env.questions)
-    if tag:
-        agent.load_model(tag)
-
-    torch.set_grad_enabled(False)
-    for r in records:
-        scores = {}
-        for q, s in zip(r.question, r.score):
-            scores[q] = s
-        if len(scores) < 10:
-            continue
-
-        action_mask = torch.zeros(env.n_questions).byte()
-        action_mask[[env.questions.stoi[x] for x in r.question]] = 1
-
-        state = agent.reset()
-        for i in count():
-            a = agent.select_action(state, action_mask)
-            action_mask[a] = 0
-            score = np.array([scores[env.questions.itos[a]]])
-            state = agent.step(a, score)
-
-            if i > len(scores) * 0.6:
-                break
-
-        score, ind = agent.get_action_values(state, action_mask)
-        rv = [(score[i][0].item(), scores[env.questions.itos[ind[i].item()]])
-              for i in range(ind.size(0))]
-        y_pred, y_true = zip(*rv)
+    result_path = ws.result_path / ('%s.seq.txt' % tag if seq
+                                    else '%s.txt' % tag )
+    with result_path.open('w') as f:
+        for line in results:
+            print(' '.join('%s,%f,%f' % rec for rec in line), file=f)
 
 
 @fret.command

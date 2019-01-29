@@ -84,7 +84,7 @@ class ValueBasedTrainer:
                         action = self.env.random_action()
                     else:
                         action = self.agent.select_action(
-                            torch.tensor(state).float(), action_mask)
+                            torch.tensor(state).float(), action_mask)[0]
 
                     # mask this action for s' (duplicates are not allowed)
                     action_mask[action] = 0

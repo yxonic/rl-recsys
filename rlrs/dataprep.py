@@ -43,6 +43,7 @@ class Vocab:
 
 class Questions:
     def __init__(self, dataset, maxlen=400):
+        self.dataset = dataset
         cfg = fret.app['datasets'][dataset]
         self._word = Vocab(cfg['word_list'])
         self._know = Vocab(cfg['knowledge_list'])
