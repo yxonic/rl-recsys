@@ -119,7 +119,7 @@ def dcg_at_k(r, k, method=0):
 
 
 def ndcg_at_k(rv, k):
-    rv.sort(key=lambda x: x[1], reverse=True)
+    rv.sort(key=lambda x: x[1])
     r = [1 - x[0] for x in rv]
     dcg_max = dcg_at_k(sorted(r, reverse=True), k, 0)
     if not dcg_max:

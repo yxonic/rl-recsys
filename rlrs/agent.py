@@ -24,8 +24,8 @@ class Agent:
     def __init__(self, questions):
         self.questions = questions
 
-    def select_action(self, state, q_mask=None):
-        values, ind = self.get_action_values(state, q_mask)
+    def select_action(self, state, action_mask=None):
+        values, ind = self.get_action_values(state, action_mask)
         v, i = values.max(), values.argmax()
         return int(ind[i]), v
 
@@ -42,9 +42,6 @@ class Agent:
 class GreedyAgent(Agent):
     def __init__(self, **cfg):
         super().__init__(**cfg)
-
-    def select_action(self, state, action_mask):
-        pass
 
     def get_action_values(self, state, action_mask):
         pass
@@ -63,7 +60,7 @@ class GreedySPAgent(Agent):
     def __init__(self, sp_model, **cfg):
         super().__init__(**cfg)
         self.sp_model = sp_model(_dataset=self.questions.dataset,
-                                 _wcnt=self.questions.n_words)
+                                 _questions=self.questions)
 
     def get_action_values(self, state, action_mask):
         vs = []
@@ -82,11 +79,17 @@ class GreedySPAgent(Agent):
         q = self.questions[action]
         s = torch.tensor(ob).float()
         with torch.no_grad():
-            s, state = self.sp_model(q, s, state)
+            _, state = self.sp_model(q, s, state)
         return state
 
     def reset(self):
         return None
+
+    def load_model(self, tag):
+        cp_path = self.ws.checkpoint_path / ('%s.%s.pt' % (
+            self.sp_model.__class__.__name__, str(tag)))
+        self.sp_model.load_state_dict(torch.load(
+            str(cp_path), map_location=lambda s, loc: s))
 
 
 @fret.configurable

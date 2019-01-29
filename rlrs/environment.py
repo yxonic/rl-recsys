@@ -185,7 +185,8 @@ class OffPolicyEnv(_StuEnv):
 class DeepSPEnv(_StuEnv):
     def __init__(self, sp_model, **cfg):
         super(DeepSPEnv, self).__init__(**cfg)
-        self.sp_model = sp_model(_dataset=self.dataset, _wcnt=self.n_words)
+        self.sp_model = sp_model(_dataset=self.dataset,
+                                 _questions=self.questions)
 
     def sample_student(self):
         self.state = None

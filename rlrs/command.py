@@ -99,7 +99,10 @@ def eval_offline(ws: fret.Workspace, tag, seq=False):
                 score, ind = agent.get_action_values(state, action_mask)
 
             M, m = score.max(), score.min()
-            pred = 1 - (score - m) / (M - m)
+            if M > 1.5 or m < -0.5:
+                pred = 1 - (score - m) / (M - m)
+            else:
+                pred = 1 - score
             true = [id_score[env.questions.itos[i]] for i in ind]
             ids = [env.questions.itos[i] for i in ind]
 
@@ -107,9 +110,8 @@ def eval_offline(ws: fret.Workspace, tag, seq=False):
 
             rv = [(true[i], pred[i]) for i in range(len(ind))]
             ndcgs += ndcg_at_k(rv, 10)
+            logger.info('NDCG: %.4f, MAP: %.4f', ndcgs.mean(), 0)
 
-            if lineno % 100 == 0:
-                logger.info('NDCG: %.4f, MAP: %.4f', ndcgs.mean(), 0)
     except KeyboardInterrupt:
         pass
 
