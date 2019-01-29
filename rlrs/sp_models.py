@@ -37,6 +37,9 @@ class EERNN(nn.Module):
     def forward(self, question, score, hidden=None):
         # question: {'id': ..., 'text': ...,
         #            'difficulty': ..., 'knowledge': ...}
+        question['text'] = torch.tensor(question['text'])
+        question['knowledge'] = torch.tensor(question['knowledge'])
+        question['difficulty'] = torch.tensor([question['difficulty']])
         ques_text = question['text']
         ques_v = self.question_net(ques_text)
         s, h = self.seq_net(ques_v[0], score, hidden)

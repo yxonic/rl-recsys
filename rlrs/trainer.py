@@ -93,7 +93,7 @@ class ValueBasedTrainer:
                     ob, reward, done, info = self.env.step(action)
 
                     # s'
-                    state_ = self.agent.step(action, ob)
+                    state_ = self.agent.step(state, action, ob)
 
                     rewards.append(reward)
 

@@ -79,7 +79,7 @@ def eval_offline(ws: fret.Workspace, tag, seq=False):
                 a = agent.select_action(state, action_mask)[0]
                 action_mask[a] = 0
                 score = np.array([id_score[env.questions.itos[a]]])
-                state = agent.step(a, score)
+                state = agent.step(state, a, score)
 
             if seq:
                 score = []
@@ -91,7 +91,7 @@ def eval_offline(ws: fret.Workspace, tag, seq=False):
                     action_mask[a] = 0
                     score.append(v)
                     ind.append(a)
-                    state = agent.step(a, np.asarray([s]))
+                    state = agent.step(state, a, np.asarray([s]))
                 score = np.asarray(score)
             else:
                 action_mask = torch.zeros(env.n_questions).byte()
@@ -99,7 +99,7 @@ def eval_offline(ws: fret.Workspace, tag, seq=False):
                 score, ind = agent.get_action_values(state, action_mask)
 
             M, m = score.max(), score.min()
-            pred = (score - m) / (M - m)
+            pred = 1 - (score - m) / (M - m)
             true = [id_score[env.questions.itos[i]] for i in ind]
             ids = [env.questions.itos[i] for i in ind]
 

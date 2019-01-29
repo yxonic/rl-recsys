@@ -197,9 +197,6 @@ class DeepSPEnv(_StuEnv):
                 _, self.state = self.sp_model(q, s, self.state)
 
     def exercise(self, q):
-        q['text'] = torch.tensor(q['text'])
-        q['knowledge'] = torch.tensor(q['knowledge'])
-        q['difficulty'] = torch.tensor([q['difficulty']])
         with torch.no_grad():
             s, self.state = self.sp_model(q, None, self.state)
         return int(s.mean().item() > 0.5)

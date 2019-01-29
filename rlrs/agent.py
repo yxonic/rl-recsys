@@ -7,6 +7,7 @@ import random
 from collections import deque
 
 import fret
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pad_packed_sequence, PackedSequence
@@ -23,13 +24,15 @@ class Agent:
     def __init__(self, questions):
         self.questions = questions
 
-    def select_action(self, state, action_mask):
-        raise NotImplementedError
+    def select_action(self, state, q_mask=None):
+        values, ind = self.get_action_values(state, q_mask)
+        v, i = values.max(), values.argmax()
+        return int(ind[i]), v
 
     def get_action_values(self, state, action_mask):
         raise NotImplementedError
 
-    def step(self, action, ob):
+    def step(self, state, action, ob):
         raise NotImplementedError
 
     def reset(self):
@@ -46,32 +49,44 @@ class GreedyAgent(Agent):
     def get_action_values(self, state, action_mask):
         pass
 
-    def step(self, action, ob):
+    def step(self, state, action, ob):
         pass
 
     def reset(self):
         pass
 
 
+@fret.configurable
 class GreedySPAgent(Agent):
     submodules = ['sp_model']
 
-    def __init__(self, sp_model, dataset, **cfg):
+    def __init__(self, sp_model, **cfg):
         super().__init__(**cfg)
-        self.sp_model = sp_model(_dataset=dataset,
+        self.sp_model = sp_model(_dataset=self.questions.dataset,
                                  _wcnt=self.questions.n_words)
 
-    def select_action(self, state, action_mask):
-        pass
-
     def get_action_values(self, state, action_mask):
-        pass
+        vs = []
+        ind = []
+        for i, m in enumerate(action_mask):
+            if not m:
+                continue
+            q = self.questions[i]
+            s, _ = self.sp_model(q, None, state)
+            s = s.flatten()[0].item()
+            vs.append(1 - s)
+            ind.append(i)
+        return np.asarray(vs), np.asarray(ind)
 
-    def step(self, action, ob):
-        pass
+    def step(self, state, action, ob):
+        q = self.questions[action]
+        s = torch.tensor(ob).float()
+        with torch.no_grad():
+            s, state = self.sp_model(q, s, state)
+        return state
 
     def reset(self):
-        pass
+        return None
 
 
 @fret.configurable
@@ -131,24 +146,17 @@ class DQN(Agent):
         self.optimizer = torch.optim.Adam(self.current_net.parameters(),
                                           lr=learning_rate)
 
-    def step(self, action, ob):
-        self.inputs.append(torch.cat([self.embs[action].view(1, -1),
-                                      torch.tensor([ob]).float()], dim=1))
-        return torch.cat(self.inputs, dim=0)  # next state
+    def step(self, state, action, ob):
+        i = torch.cat([self.embs[action].view(1, -1),
+                       torch.tensor([ob]).float()], dim=1)
+        return torch.cat([state, i], dim=0)  # next state
 
     def reset(self):
-        self.inputs.clear()
-        self.inputs.append(torch.zeros((1, self.questions.n_knowledge + 52)))
-        return self.inputs[-1]  # initial state
+        return torch.zeros((1, self.questions.n_knowledge + 52))
 
     @staticmethod
     def make_replay_memory(size):
         return ReplayMemory(size)
-
-    def select_action(self, state, q_mask=None):
-        values, ind = self.get_action_values(state, q_mask)
-        v, i = values.max(), values.argmax()
-        return int(ind[i]), v
 
     def get_action_values(self, state, q_mask=None):
         actions = self.embs
