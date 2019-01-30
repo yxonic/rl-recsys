@@ -84,7 +84,8 @@ class Questions:
             self._ques_diff[qid] = diff
 
         self._ques_set = set(self._ques_text_ind) & \
-                         set(self._ques_know) & set(self._ques_diff)
+            set(self._ques_know) & set(self._ques_diff)
+
         self.vocab = Vocab(list(sorted(self._ques_set)))
         self.stoi = self.vocab.stoi
         self.itos = self.vocab.itos

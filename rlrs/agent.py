@@ -109,7 +109,8 @@ class DQN(Agent):
         action_size = self.action_size = questions.n_knowledge + 51
         self.questions = questions
 
-        sp_model: EERNN = sp_model(_dataset=None, _wcnt=questions.n_words)
+        sp_model: EERNN = sp_model(_dataset=questions.dataset,
+                                   _questions=questions)
         cp_path = 'ws/best/%s.%s.pt' % (questions.dataset,
                                         sp_model.__class__.__name__)
         sp_model.load_state_dict(torch.load(

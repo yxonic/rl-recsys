@@ -73,7 +73,7 @@ class ValueBasedTrainer:
                 action_mask = torch.ones(self.env.n_questions).byte()
                 if hasattr(self.env, 'qids'):
                     action_mask[[self.env.questions.stoi[x]
-                                for x in self.env.qids]] = 0
+                                 for x in self.env.qids]] = 0
                     action_mask = 1 - action_mask
 
                 for _ in critical():
