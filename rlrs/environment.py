@@ -60,7 +60,7 @@ class _StuEnv(gym.Env, abc.ABC):
         # new session
         self._history = []
         self._seen_knows = set()
-        self._scores = deque(maxlen=5)
+        self._scores = deque()
         self._stop = False
         self._last_bias = 0.
         self.sample_student()
@@ -191,11 +191,14 @@ class DeepSPEnv(_StuEnv):
     def sample_student(self):
         self.state = None
         # sample some records
-        records = random.sample(self.records) if self.records else []
+        records = random.choice(self.records) if self.records else []
         # feed into self.sp_model to get state
         with torch.no_grad():
-            for q, s in records:
+            for qid, score in zip(records.question, records.score):
+                q = self.questions[qid]
+                s = torch.tensor([score])
                 _, self.state = self.sp_model(q, s, self.state)
+        self.qids = random.sample(list(self.questions.stoi), 100)
 
     def exercise(self, q):
         with torch.no_grad():

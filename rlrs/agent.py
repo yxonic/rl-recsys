@@ -11,10 +11,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pad_packed_sequence, PackedSequence
-from tqdm import tqdm
 
 from .sp_models import EERNN
-from .util import SeqBatch
 
 
 @fret.configurable
@@ -39,12 +37,20 @@ class Agent:
         raise NotImplementedError
 
 
-class GreedyAgent(Agent):
+@fret.configurable
+class RandomAgent(Agent):
     def __init__(self, **cfg):
         super().__init__(**cfg)
 
     def get_action_values(self, state, action_mask):
-        pass
+        vs = []
+        ind = []
+        for i, m in enumerate(action_mask):
+            if not m:
+                continue
+            vs.append(random.random())
+            ind.append(i)
+        return np.asarray(vs), np.asarray(ind)
 
     def step(self, state, action, ob):
         pass
@@ -115,21 +121,13 @@ class DQN(Agent):
                                         sp_model.__class__.__name__)
         sp_model.load_state_dict(torch.load(
             str(cp_path), map_location=lambda s, loc: s))
+        sp_model.eval()
         quesnet = sp_model.question_net
         for param in quesnet.parameters():
             param.requires_grad_(False)
 
         self.embs = []
-        q_text = [q['text'] for q in questions]
-        q_text_embs = []
-        for i_batch in tqdm(range(int(math.ceil(len(q_text) / 32)))):
-            batch = q_text[i_batch * 32:(i_batch + 1) * 32]
-            seq = SeqBatch(batch)
-            hs = quesnet(seq.packed())
-            hs = seq.invert(hs, 0)
-            q_text_embs.append(hs)
-        q_text_embs = torch.cat(q_text_embs, dim=0)
-
+        q_text_embs = sp_model.ques_vs
         for i, q in enumerate(questions):
             i = torch.cat([q_text_embs[i].view(1, -1),
                            torch.tensor(q['knowledge']).float().view(1, -1),

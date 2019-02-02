@@ -1,3 +1,4 @@
+import math
 import os
 
 import fret
@@ -6,7 +7,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils.rnn import PackedSequence
 
-from .dataprep import load_embedding, Questions
+from .dataprep import load_embedding
+from .util import SeqBatch
 
 
 @fret.configurable
@@ -19,6 +21,7 @@ class EERNN(nn.Module):
                  attn_k=(10, 'top k records for attention in EERNN model')):
         super(EERNN, self).__init__()
         _wcnt = _questions.n_words
+        self.questions = _questions
         self.wcnt = _wcnt
         self.emb_size = emb_size
         self.ques_h_size = ques_h_size
@@ -27,12 +30,22 @@ class EERNN(nn.Module):
         self.attn_k = attn_k
 
         self.question_net = QuesNet(_wcnt, ques_h_size, emb_size)
+
         if _dataset:
             emb_file = 'data/%s/emb_%d.txt' % (_dataset, emb_size)
             if os.path.exists(emb_file):
                 embs = load_embedding(emb_file)
                 self.question_net.load_emb(embs)
 
+        self.ques_vs = []
+        q_text = [q['text'] for q in _questions]
+        for i_batch in range(int(math.ceil(len(q_text) / 32))):
+            batch = q_text[i_batch * 32:(i_batch + 1) * 32]
+            seq = SeqBatch(batch)
+            hs = self.question_net(seq.packed()).detach()
+            hs = seq.invert(hs, 0)
+            self.ques_vs.append(hs)
+        self.ques_vs = torch.cat(self.ques_vs, dim=0)
         self.seq_net = EERNNSeqNet(ques_h_size, seq_h_size, n_layers, attn_k)
 
     def forward(self, question, score, hidden=None):
@@ -42,7 +55,11 @@ class EERNN(nn.Module):
         question['knowledge'] = torch.tensor(question['knowledge'])
         question['difficulty'] = torch.tensor([question['difficulty']])
         ques_text = question['text']
-        ques_v = self.question_net(ques_text)
+        if self.training:
+            ques_v = self.question_net(ques_text)
+        else:
+            ques_v = self.ques_vs[
+                self.questions.stoi[question['id']]].unsqueeze(0)
         s, h = self.seq_net(ques_v[0], score, hidden)
 
         if hidden is None:
@@ -62,15 +79,17 @@ class DKT(nn.Module):
     def __init__(self, _dataset, _questions):
         super(DKT, self).__init__()
         self.dataset = _dataset
-        self.n_knowledge = _questions.n_knowledge
+        self.questions = _questions
+        self.n_input = len(_questions.stoi)
         self.seq_hidden_size = 18
 
-        self.seq_net = DKTNet(self.n_knowledge, self.seq_hidden_size)
+        self.seq_net = DKTNet(self.n_input, self.seq_hidden_size)
 
-    def forward(self, knowledge_vec, score, hidden=None):
-        # print (knowledge_vec.keys())
+    def forward(self, q, score, hidden=None):
+        k = torch.zeros(self.n_input)
+        k[self.questions.stoi[q['id']]] = 1
         s, hidden = self.seq_net(
-            torch.tensor(knowledge_vec['knowledge']).float(),
+            torch.tensor(k).float(),
             score, hidden)
         return s, hidden
 
@@ -83,11 +102,11 @@ class DKVMN(nn.Module):
     def __init__(self, _dataset, _questions):
         super(DKVMN, self).__init__()
         self.dataset = _dataset
-        self.knows = fret.app['datasets'][_dataset]['knowledge_list']
         self.knowledge_hidden_size = 18
         self.seq_hidden_size = 18
-        know_dic = open(self.knows).read().split('\n')
-        self.kcnt = len(know_dic)
+
+        self.questions = _questions
+        self.kcnt = len(_questions.stoi)
         self.valve_size = self.knowledge_hidden_size * 2
 
         # knowledge embedding module
@@ -99,28 +118,28 @@ class DKVMN(nn.Module):
                                        self.valve_size)
 
     def forward(self, q, score, time, hidden=None):
-        # print(knowledge)
-        q['knowledge'] = torch.tensor(q['knowledge'])
+        k = torch.zeros(self.kcnt)
+        k[self.questions.stoi[q['id']]] = 1
 
         if score is None:
             score = 0
-            expand_vec = q['knowledge'].float().view(-1) * score
+            expand_vec = k.float().view(-1) * score
             # print(expand_vec)
-            cks = torch.cat([q['knowledge'].float().view(-1),
+            cks = torch.cat([k.float().view(-1),
                              expand_vec]).view(1, -1)
             # print(cks)
 
-            knowledge = self.knowledge_model(q)
+            knowledge = self.knowledge_model(k)
             score, _ = self.seq_model(cks, knowledge, score, hidden)
             score = score.flatten()
 
-        expand_vec = q['knowledge'].float().view(-1) * score
+        expand_vec = k.float().view(-1) * score
         # print(expand_vec)
-        cks = torch.cat([q['knowledge'].float().view(-1),
+        cks = torch.cat([k.float().view(-1),
                          expand_vec]).view(1, -1)
         # print(cks)
 
-        knowledge = self.knowledge_model(q)
+        knowledge = self.knowledge_model(k)
         s, h = self.seq_model(cks, knowledge, score, hidden)
         return s, h
 
@@ -135,7 +154,7 @@ class KnowledgeModel(nn.Module):
         self.knowledge_embedding = nn.Linear(know_len, know_emb_size)
 
     def forward(self, knowledge):
-        return self.knowledge_embedding(knowledge['knowledge'].float().view(1, -1))
+        return self.knowledge_embedding(knowledge.float().view(1, -1))
 
 
 class DKVMNSeqModel(nn.Module):
@@ -214,14 +233,10 @@ class QuesNet(nn.Module):
         self.c0 = nn.Parameter(torch.rand(2, 1, hidden_size // 2))
 
     def forward(self, q):
-        if isinstance(q, PackedSequence):
-            bs = q.batch_sizes[0]
-            emb = self.embedding(q.data)
-            emb = PackedSequence(emb, q.batch_sizes)
-        else:
-            q = q.unsqueeze(0)  # batch
-            bs = 1
-            emb = self.embedding(q)
+        bs = q.batch_sizes[0]
+        emb = self.embedding(q.data)
+        emb = PackedSequence(emb, q.batch_sizes)
+
         h = self.init_h(bs)
         y, h = self.rnn(emb, h)
         return h[0].view(bs, -1)

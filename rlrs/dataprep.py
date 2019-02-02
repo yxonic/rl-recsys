@@ -99,10 +99,12 @@ class Questions:
         if qid in self._ques_set:
             know = np.zeros((self.n_knowledge,))
             know[self._ques_know[qid]] = 1
-
+            text = self._ques_text[self._ques_text_ind[qid]].content
+            if self.dataset == 'poj':
+                text = text[:50]
             return {
                 'id': qid,
-                'text': self._ques_text[self._ques_text_ind[qid]].content,
+                'text': text,
                 'knowledge': know,
                 'difficulty': self._ques_diff[qid]
             }

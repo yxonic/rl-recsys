@@ -26,6 +26,8 @@ class ValueBasedTrainer:
                  maxlen=(20, 'max sequence length')):
         self.exploration_p = exploration_p
         self.env: _StuEnv = env()
+        if hasattr(self.env, 'sp_model'):
+            self.env.sp_model.eval()
         self.agent: DQN = agent(questions=self.env.questions)
         self.replay_memory = self.agent.make_replay_memory(memory_capacity)
         self.maxlen = maxlen
