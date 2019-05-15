@@ -305,3 +305,34 @@ class LSTMNet(SimpleNet):
         h = h[-1]  # last layer hidden, (_, hs)
         x = torch.cat([h.expand(a.size(0), h.size(1)), a], dim=1)
         return self.transform_net(x)
+
+
+@fret.configurable
+class DQNSimpleNet(PolicyNet):
+    """
+    Baseline network: Simple DQN network using several dense layers for state embedding,
+    State: one-hot of exercise id plus performance
+    """
+    def __init__(self, _questions, _knowledges, hidden_size=200, n_layers=1, **cfg):
+        super(DQNSimpleNet, self).__init__(cfg['state_size'], cfg['action_size'])
+        self.hidden_size = hidden_size
+        self.n_layers = n_layers
+
+        self.questions = _questions
+        self.qcnt = len(self.questions.stoi)
+        self.knowledges = _knowledges
+        self.kcnt = len(self.knowledges)
+
+        self.state_net = nn.Sequential(
+            nn.Linear(self.qcnt * 2, 200),
+            nn.Linear(200, 100),
+            nn.Linear(100, self.state_size)
+        )
+
+    def forward(self, q, score):
+        q_onehot = torch.zeros(self.qcnt)
+        q_onehot[self.questions.stoi[q['id']]] = 1
+
+        x = torch.cat([q_onehot * (score >= 0.5).type_as(q_onehot).expand_as(q_onehot),
+                       q_onehot * (score < 0.5).type_as(q_onehot).expand_as(q_onehot)])
+        return self.state_net(x)
