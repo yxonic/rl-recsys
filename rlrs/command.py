@@ -202,4 +202,5 @@ def eval_online(ws: fret.Workspace, tag=None, n_students=100, seq_len=20,
         returns += R
     if not quiet:
         print(returns.mean())
+
     return returns.mean(), results

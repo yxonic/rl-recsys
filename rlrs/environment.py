@@ -58,6 +58,7 @@ class _StuEnv(gym.Env, abc.ABC):
 
     def reset(self):
         # new session
+        # new session
         self._history = []
         self._seen_knows = set()
         self._scores = deque()
